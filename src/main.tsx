@@ -34,7 +34,8 @@ import {
   Leaf,
   RotateCcw,
   Users,
-  PanelLeftClose,
+  Play,
+  Pause,
 } from "lucide-react";
 import {
   type State,
@@ -63,6 +64,16 @@ import {
   id,
 } from "./domain";
 import "./styles.css";
+import "./theme.css";
+import { SkillCover } from "./SkillCover";
+import { EntryIntro } from "./EntryIntro";
+import {
+  SkillOrbit,
+  AnimatedValue,
+  ExchangeJourney,
+  SettlementMoment,
+  useMotionPreference,
+} from "./experience";
 const STORAGE = "skills-ring-demo-v1";
 const nav = [
   { label: "Home", icon: Home },
@@ -107,6 +118,7 @@ function SkillIcon({ skill }: { skill: string }) {
   );
 }
 function App() {
+  const [motion, setMotion] = useMotionPreference();
   const [state, setState] = useState<State>(() => {
     try {
       const s = JSON.parse(localStorage.getItem(STORAGE) || "null");
@@ -114,7 +126,8 @@ function App() {
       // Migrate the fictional demo venue label while preserving existing work.
       const saved = s as State;
       for (const listing of saved.listings) {
-        if (listing.location === "HKU") listing.location = "Local meeting point";
+        if (listing.location === "HKU")
+          listing.location = "Local meeting point";
       }
       for (const exchange of saved.exchanges) {
         const legs = [...exchange.legs];
@@ -164,7 +177,20 @@ function App() {
   }, [toast]);
   function act(action: Action) {
     try {
-      setState(transition(state, action));
+      const next = transition(state, action);
+      setState(next);
+      if (action.type === "complete") {
+        const exchange = next.exchanges.find((e) => e.id === action.exchange);
+        setToast(
+          exchange?.status === "settled"
+            ? "Full circle. Every service in this exchange is fulfilled."
+            : "Service recorded. Your exchange is moving forward.",
+        );
+      } else if (action.type === "confirm") {
+        setToast("Agreement recorded. One step closer to your exchange.");
+      } else if (action.type === "evaluate") {
+        setToast("Feedback saved. A little trust goes a long way.");
+      }
     } catch (e) {
       setToast((e as Error).message);
     }
@@ -173,6 +199,7 @@ function App() {
     setPage(next);
     setMenu(false);
     setQuery("");
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
   const myExchanges = state.exchanges.filter(
     (e) => participants(e).includes(user) || e.recovery?.replacement === user,
@@ -231,7 +258,6 @@ function App() {
             <span />
           </span>
           skills<span className="brand-light">ring</span>
-          <span className="brand-dot">®</span>
         </a>
         <div className="global-search">
           <Search size={17} />
@@ -247,7 +273,18 @@ function App() {
           <kbd>⌕</kbd>
         </div>
         <div className="top-actions">
-          <span className="demo-pill">Demo workspace</span>
+          <button className="demo-launcher" onClick={() => setModal("demo")}>
+            <Play size={13} fill="currentColor" /> Demo studio
+          </button>
+          <button
+            className="icon-button motion-toggle"
+            aria-label={motion ? "Pause motion" : "Enable motion"}
+            aria-pressed={motion}
+            title={motion ? "Pause motion" : "Enable motion"}
+            onClick={() => setMotion(!motion)}
+          >
+            {motion ? <Pause size={17} /> : <Play size={17} />}
+          </button>
           <button
             className="icon-button notification"
             aria-label="Notifications"
@@ -275,16 +312,6 @@ function App() {
         </div>
       </header>
       <aside className={`sidebar ${menu ? "is-open" : ""}`}>
-        <button className="community-switch" onClick={() => go("Community")}>
-          <span className="community-icon">
-            <Globe2 size={22} />
-          </span>
-          <span>
-            <strong>Skills-Ring community</strong>
-            <small>Open to everyone</small>
-          </span>
-          <ChevronDown size={15} />
-        </button>
         <nav>
           {nav.map(({ label, icon: Icon }) => (
             <button
@@ -327,7 +354,7 @@ function App() {
         </div>
       </aside>
       <main>
-        <div className="workspace-width">
+        <div className="workspace-width" key={page}>
           {storageError && (
             <div className="warning">
               <AlertTriangle size={18} />
@@ -341,81 +368,10 @@ function App() {
           </div>
           {page === "Home" ? (
             <>
-              <div className="page-heading">
-                <div>
-                  <div className="eyebrow">A LITTLE GIVE. A LITTLE GROW.</div>
-                  <h1>
-                    Good to see you, {name(user)}{" "}
-                    <span className="wave">✳</span>
-                  </h1>
-                  <p>
-                    Here’s what’s happening in your corner of the community.
-                  </p>
-                </div>
-                <button className="button primary" onClick={() => add("offer")}>
-                  <Plus size={17} /> Add an offer or need
-                </button>
-              </div>
-              <section className="welcome-banner">
-                <div className="banner-copy">
-                  <span className="banner-label">
-                    <span /> YOUR SKILLS HAVE SOMEWHERE TO GO
-                  </span>
-                  <h2>
-                    What you know.
-                    <br />
-                    What you need.
-                    <br />
-                    <em>A world of possibility between.</em>
-                  </h2>
-                  <p>
-                    Share a skill, learn something new, and make
-                    <br className="desktop-br" /> good things happen for each
-                    other.
-                  </p>
-                  <button className="button light" onClick={openMatches}>
-                    Find your next exchange <ArrowUpRight size={16} />
-                  </button>
-                </div>
-                <div
-                  className="banner-network"
-                  aria-label="A skill exchange connects giving, learning and growing"
-                >
-                  <svg viewBox="0 0 380 260" aria-hidden="true">
-                    <path d="M105 68 C210 -5 342 63 278 173 C237 265 78 238 78 129" />
-                    <path
-                      className="inner-orbit"
-                      d="M105 68 Q180 161 278 173 Q193 135 78 129"
-                    />
-                  </svg>
-                  <div className="network-center">
-                    <span className="brand-mark">
-                      <span />
-                      <span />
-                    </span>
-                  </div>
-                  <div className="floating-skill code">
-                    <Code2 size={23} />
-                    <span>Give a little</span>
-                    <strong>Python tutoring</strong>
-                  </div>
-                  <div className="floating-skill camera">
-                    <Camera size={23} />
-                    <span>Learn a little</span>
-                    <strong>Photography</strong>
-                  </div>
-                  <div className="floating-skill tennis-card">
-                    <Leaf size={23} />
-                    <span>Grow together</span>
-                    <strong>Tennis coaching</strong>
-                  </div>
-                  <span className="sparkle s1">✳</span>
-                  <span className="sparkle s2">✧</span>
-                  <span className="network-caption">
-                    No money. Just mutual possibility.
-                  </span>
-                </div>
-              </section>
+              <SkillOrbit
+                onExplore={openMatches}
+                onAddSkills={() => add("offer")}
+              />
               <section className="stats-grid">
                 <Stat
                   title="Active exchanges"
@@ -1032,10 +988,11 @@ function App() {
         </Modal>
       )}
       {modal === "demo" && (
-        <Modal title="Your demo workspace" onClose={() => setModal(null)}>
+        <Modal title="The Demo Studio" onClose={() => setModal(null)}>
           <p className="modal-intro">
-            Explore repeatable scenarios using the same matching and service
-            ledger. Starting a scenario replaces the current local demo data.
+            Take Skills-Ring for a spin. These stories use the same matching and
+            service ledger. Starting a scenario replaces the current local demo
+            data.
           </p>
           <div className="scenario-list">
             {(
@@ -1146,7 +1103,9 @@ function Stat({
         <span>{title}</span>
         {icon}
       </div>
-      <strong>{value}</strong>
+      <strong>
+        <AnimatedValue value={value} />
+      </strong>
       <small>{detail}</small>
     </button>
   );
@@ -1188,6 +1147,7 @@ function MatchCard({
     get = legs.find((l) => l.receiver === user)!;
   return (
     <article className="card match-card">
+      <SkillCover key={get.skill} skill={get.skill} />
       <div className="match-member">
         <Avatar user={get.provider} />
         <div>
@@ -1254,6 +1214,7 @@ function ExchangeSummary({
     finished = e.legs.reduce((n, l) => n + done(state, e.id, l.id), 0);
   return (
     <div className="exchange-summary">
+      <SkillCover key={get.skill} skill={get.skill} />
       <div className="exchange-top">
         <div className="overlap-avatars">
           {participants(e)
@@ -1572,6 +1533,7 @@ function ExchangeDetails({
           {e.status}
         </Badge>
       </div>
+      <ExchangeJourney status={e.status} />
       <div className="tabs">
         {["Overview", "Sessions & trust", "Changes & recovery", "Activity"].map(
           (t) => (
@@ -1587,6 +1549,7 @@ function ExchangeDetails({
       </div>
       {tab === "Overview" && (
         <>
+          {e.status === "settled" && <SettlementMoment />}
           {imbalance(e.legs) && (
             <div className="notice amber">
               <AlertTriangle size={21} />
@@ -2155,6 +2118,6 @@ function EvaluationForm({
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <EntryIntro><App /></EntryIntro>
   </React.StrictMode>,
 );

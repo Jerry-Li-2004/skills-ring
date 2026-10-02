@@ -1,0 +1,107 @@
+.entry-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: #fcfcff;
+  opacity: 1;
+  transition: opacity 550ms ease;
+}
+.entry-intro.is-leaving { opacity: 0; }
+.entry-intro-center {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  width: 100%;
+}
+.entry-intro-halo {
+  position: absolute;
+  width: min(460px, 90vw);
+  aspect-ratio: 1;
+  top: 50%;
+  left: 50%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ecebff 0%, #f5f4ff80 40%, transparent 70%);
+  transform: translate(-50%, -50%);
+  animation: intro-halo 2400ms ease both;
+}
+.entry-intro-logo {
+  width: clamp(300px, 40vw, 400px);
+  height: clamp(300px, 40vw, 400px);
+  overflow: visible;
+  position: relative;
+  /* Center the drawn mark, whose visual center is right of the viewBox center. */
+  margin-left: -36px;
+}
+.entry-ring { transform-origin: 54px 54px; }
+.entry-ring-first { animation: intro-ring-first 2200ms cubic-bezier(.22, 1, .36, 1) both; }
+.entry-ring-second { animation: intro-ring-second 2200ms cubic-bezier(.22, 1, .36, 1) both; }
+.entry-ring ellipse {
+  stroke-dasharray: 1;
+  stroke-linecap: round;
+  animation: intro-draw 1100ms cubic-bezier(.45, 0, .2, 1) both;
+}
+.entry-ring-second ellipse { animation-delay: 180ms; }
+.entry-intro-wordmark {
+  position: relative;
+  margin-top: 6px;
+  color: #292b43;
+  font-size: 56px;
+  letter-spacing: -2.8px;
+  font-weight: 750;
+  animation: intro-copy 700ms 650ms ease both;
+}
+.entry-intro-wordmark span { font-weight: 450; }
+.entry-intro-caption {
+  position: relative;
+  margin-top: 12px;
+  padding-inline: 24px;
+  text-align: center;
+  color: #858598;
+  font-size: 24px;
+  letter-spacing: 1.2px;
+  animation: intro-copy 700ms 850ms ease both;
+}
+.entry-intro-skip {
+  position: absolute;
+  right: max(24px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  background: transparent;
+  border: 1px solid #e4e4ee;
+  border-radius: 999px;
+  padding: 11px 17px;
+  color: #727387;
+  font-size: 12px;
+}
+@keyframes intro-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes intro-ring-first {
+  0% { transform: translate(-20px, 8px) rotate(-55deg) scale(.8); opacity: 0; }
+  20% { opacity: 1; }
+  55% { transform: translate(-6px, -4px) rotate(15deg) scale(1.04); }
+  100% { transform: translate(0, 0) rotate(0) scale(1); opacity: 1; }
+}
+@keyframes intro-ring-second {
+  0% { transform: translate(20px, -8px) rotate(65deg) scale(.8); opacity: 0; }
+  25% { opacity: 1; }
+  55% { transform: translate(6px, 4px) rotate(-15deg) scale(1.04); }
+  100% { transform: translate(0, 0) rotate(0) scale(1); opacity: 1; }
+}
+@keyframes intro-copy {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes intro-halo {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.65); }
+  65%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .entry-intro { display: none; }
+  .entry-intro, .entry-intro * { animation: none; transition: none; }
+}

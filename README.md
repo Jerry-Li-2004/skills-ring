@@ -1,6 +1,6 @@
 # Skills-Ring
 
-A Shopify-inspired public community for individual skill sharing and non-monetary service exchange. Anyone can treat their skills as personal assets, share what they know, and exchange with others. Built with React, TypeScript, and Vite, with a standalone domain layer and a Vercel deployment configuration.
+An Apple-inspired public community for individual skill sharing and non-monetary service exchange. Anyone can treat their skills as personal assets, share what they know, and exchange with others. Built with React, TypeScript, and Vite, with a standalone domain layer and a Vercel deployment configuration.
 
 ## Run locally
 
@@ -34,7 +34,9 @@ Import this repository into Vercel, select the **Vite** framework preset, and us
 - Future session-count amendments with an audit trail and all-party consent.
 - Dispute holds and simulated full release, 50% partial release, or default; original claims remain preserved.
 - Binary behavioural evaluations and reliability derived from recorded feedback.
-- Responsive navigation, keyboard-accessible dialogs, search, device-local persistence, and repeatable scenarios.
+- Glass-style navigation, an interactive Give / Learn / Connect hero, animated progress and statistics, and a settlement celebration.
+- Responsive navigation, keyboard-accessible dialogs and hero tabs, search, device-local persistence, and repeatable scenarios.
+- Demo Studio in the top bar opens the repeatable stories. The motion toggle pauses decorative animation; system reduced-motion preferences are respected.
 
 ## Demo walkthroughs
 
@@ -61,7 +63,9 @@ In **Changes & recovery**, propose a new total session count within offer capaci
 - `src/domain.ts`: pure matching, transitions, ledger derivation, reliability, seed scenarios, and recommendation priorities.
 - `src/domain.test.ts`: domain regression tests.
 - `src/main.tsx`: workspace and workflow UI.
-- `src/styles.css`: responsive visual system.
+- `src/styles.css`: base layout and responsive behaviour.
+- `src/theme.css`: Apple-inspired visual treatment, transitions, and responsive motion.
+- `src/experience.tsx`: interactive hero, motion preference, animated values, exchange journey, and settlement celebration.
 - `scripts/browser-smoke.js`: browser-side smoke test exercising visible controls; run with an already-open local app using `agent-browser eval --stdin < scripts/browser-smoke.js`. This deliberately resets the local demo workspace.
 - Storage key: `skills-ring-demo-v1`. State is local to one browser/device; there is no shared backend, authentication, real notification delivery, or independent service verification. The header selector and administrative decisions are explicitly simulated.
 - Conditions use conservative exact matching, and the form selects one coarse availability slot. The domain supports multiple slots. No calendar booking, chat, collateral, payment, or email integration is included.
