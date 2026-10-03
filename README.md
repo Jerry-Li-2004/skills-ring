@@ -1,27 +1,35 @@
 # Skills-Ring
 
-An Apple-inspired public community for individual skill sharing and non-monetary service exchange. Anyone can treat their skills as personal assets, share what they know, and exchange with others. Built with React, TypeScript, and Vite, with a standalone domain layer and a Vercel deployment configuration.
+An Apple-inspired community for individual skill sharing and non-monetary service exchange. This branch adds database-backed registration and login to the existing React/Vite demo.
 
 ## Run locally
 
-Use Node.js 22.12+ (22 LTS recommended) or Node.js 24.
+Use Node.js 22.13+ or Node.js 24. In separate terminals:
 
 ```sh
 npm ci
+npm run dev:api
 npm run dev
 ```
+
+For local registration and login, set `PUBLIC_ORIGIN` in the API terminal to the exact URL printed by Vite (for example, `http://127.0.0.1:5173`; `localhost` and `127.0.0.1` are not interchangeable here), then start or restart `npm run dev:api`. In PowerShell, use `$env:PUBLIC_ORIGIN = 'http://127.0.0.1:5173'`; if script execution blocks `npm`, use `npm.cmd` instead.
 
 Open the URL printed by Vite. To validate and build:
 
 ```sh
 npm test
+npm run test:auth
 npm run build
-npm run preview
+npm start
 ```
 
-## Deploy to Vercel
+`npm run dev:api` starts the account API on `127.0.0.1:3001`. Vite proxies `/api` to it. After `npm run build`, `npm start` serves both the built site and API on port 3001. Registration asks for display name, email, and a password of at least 8 characters (longer passphrases are recommended). It creates a `usr_<UUID>` user ID and atomically inserts into the **shared** `users`, `auth_credentials`, and `auth_sessions` tables. By default this is the sibling `../database_demo2/skill_swap_algorithm_input.db`, which already contains the 300 synthetic users, offers, and needs. `auth_credentials` and `auth_sessions` live in that same SQLite file but remain separate from public profile data. Set `SKILLS_RING_DB_PATH` to another full Skills-Ring SQLite database if needed. Passwords are stored only as salted scrypt hashes; browser sessions use an HttpOnly, SameSite=Strict cookie.
 
-Import this repository into Vercel, select the **Vite** framework preset, and use Node.js **22.x**. The included `vercel.json` sets `npm run build`, the `dist` output directory, and SPA fallback routing. No environment variables, API keys, external database, or paid resources are required for this demo. Deployment has not been performed by this build task.
+Email verification and password reset are **not** implemented. A person can register an email address they do not own; do not open public self-registration without an abuse/recovery policy. Synthetic users have no credentials and cannot sign in or consent to a real exchange until an activation process is added. The existing exchange workspace still uses fictional local demo participants and is explicitly labeled as such after sign-in. Registered users are now in the same SQL `users` table and can be referenced by future offers/needs, but the current listing and exchange UI still uses local demo state.
+
+## Deployment boundary
+
+The old `vercel.json` builds a static Vite site only; it cannot host this file-backed account API or persist its SQLite database. For real accounts, deploy the Node server with a persistent disk and HTTPS, set `SKILLS_RING_DB_PATH` to the full application database on that disk, set `PUBLIC_ORIGIN` to the exact public HTTPS origin, and set `AUTH_SECURE_COOKIES=true`. Keep the database file and backups private: it now contains authentication tables. Do not hand the entire live database to the algorithm team; use a sanitized data export that excludes credentials and sessions. The in-memory login rate limiter is suitable for one server process; a multi-instance deployment needs a shared limiter. The app has not been deployed or penetration-tested on this branch.
 
 ## What works
 

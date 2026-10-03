@@ -66,7 +66,7 @@ import {
 import "./styles.css";
 import "./theme.css";
 import { SkillCover } from "./SkillCover";
-import { EntryIntro } from "./EntryIntro";
+import { AuthGate, type Account } from "./auth";
 import {
   SkillOrbit,
   AnimatedValue,
@@ -90,6 +90,11 @@ function Avatar({ user, size = "" }: { user: Person; size?: string }) {
       {people[user].initials}
     </span>
   );
+}
+function accountInitials(displayName: string) {
+  const words = displayName.trim().split(/\s+/);
+  if (words.length > 1) return `${Array.from(words[0])[0]}${Array.from(words[words.length - 1])[0]}`.toUpperCase();
+  return Array.from(displayName.trim()).slice(0, 2).join("").toUpperCase();
 }
 function Badge({
   children,
@@ -117,7 +122,7 @@ function SkillIcon({ skill }: { skill: string }) {
     </span>
   );
 }
-function App() {
+function App({ account, onLogout }: { account: Account; onLogout: () => Promise<void> }) {
   const [motion, setMotion] = useMotionPreference();
   const [state, setState] = useState<State>(() => {
     try {
@@ -294,21 +299,18 @@ function App() {
             {active.length > 0 && <i />}
           </button>
           <span className="top-divider" />
-          <label className="user-switch">
-            <Avatar user={user} size="small" />
-            <select
-              aria-label="Demo participant"
-              value={user}
-              onChange={(e) => setUser(e.target.value as Person)}
-            >
-              {Object.keys(people).map((p) => (
-                <option key={p} value={p}>
-                  {people[p as Person].name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={14} />
-          </label>
+          <details className="account-menu">
+            <summary aria-label={`Account: ${account.name}`}>
+              <span className="account-avatar" aria-hidden="true">{accountInitials(account.name)}</span>
+              <span className="account-display-name" title={account.email}>{account.name}</span>
+              <ChevronDown size={14} />
+            </summary>
+            <div className="account-menu-panel">
+              <strong>{account.name}</strong>
+              <small>{account.email}</small>
+              <button className="account-logout" onClick={() => void onLogout().catch(() => setToast("Could not sign out. Please try again."))}>Sign out</button>
+            </div>
+          </details>
         </div>
       </header>
       <aside className={`sidebar ${menu ? "is-open" : ""}`}>
@@ -355,6 +357,14 @@ function App() {
       </aside>
       <main>
         <div className="workspace-width" key={page}>
+          <div className="demo-identity-note">
+            <span><strong>Demo workspace</strong> · These exchanges use fictional participants. Your account is {account.name}.</span>
+            <label>View as
+              <select aria-label="Fictional demo participant" value={user} onChange={(e) => setUser(e.target.value as Person)}>
+                {Object.keys(people).map((p) => <option key={p} value={p}>{people[p as Person].name}</option>)}
+              </select>
+            </label>
+          </div>
           {storageError && (
             <div className="warning">
               <AlertTriangle size={18} />
@@ -974,9 +984,9 @@ function App() {
             <div className="notice">
               <BookOpen size={20} />
               <p>
-                This base uses fictional people and browser storage.
-                Authentication, participant identities, and dispute
-                administration are simulated. There are no payments or
+                Accounts use the shared SQLite database. This exchange workspace
+                still uses fictional participants and browser storage; dispute
+                administration is simulated. There are no payments or
                 transferable credits.
               </p>
             </div>
@@ -1393,8 +1403,8 @@ function ListingForm({
         </button>
       </div>
       <p>
-        Posting as <strong>{people[user].name}</strong>. Each offer and need has
-        its own preferences.
+        Demo only · posting as fictional participant <strong>{people[user].name}</strong>.
+        Each offer and need has its own preferences.
       </p>
       <div className="form-grid">
         <label>
@@ -2114,6 +2124,6 @@ function EvaluationForm({
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <EntryIntro><App /></EntryIntro>
+    <AuthGate>{(account, logout) => <App account={account} onLogout={logout} />}</AuthGate>
   </React.StrictMode>,
 );
