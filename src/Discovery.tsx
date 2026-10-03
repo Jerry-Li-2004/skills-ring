@@ -90,6 +90,7 @@ export function Discovery({ state, user, matches, query, loading = false, initia
   const routes = useMemo(() => {
     const unique = new Map<string, Leg[]>();
     matches.forEach((legs) => unique.set(routeKey(legs), legs));
+    const rankByRoute = new Map(matches.map((legs, index) => [routeKey(legs), index]));
     return [...unique].map(([key, legs]) => ({ key, legs })).filter(({ key, legs }) => {
       const receive = legs.find((l) => l.receiver === user)!;
       const listing = state.listings.find((l) => l.id === receive.offer);
@@ -106,6 +107,7 @@ export function Discovery({ state, user, matches, query, loading = false, initia
         (!filter.type || (filter.type === "direct" ? legs.length === 2 : legs.length > 2)) &&
         (!filter.reliability || reliability(state, member).reviews >= Number(filter.reliability));
     }).sort((a, b) => {
+      if (sort === "best" && state.liveMatches) return (rankByRoute.get(a.key) ?? Infinity) - (rankByRoute.get(b.key) ?? Infinity);
       const score = (r: Route) => {
         if (sort === "soonest") return nextSlotDistance(r.legs.find((l) => l.receiver === user)!.availability);
         if (sort === "direct") return r.legs.length;

@@ -3,7 +3,12 @@ dist/
 *.tsbuildinfo
 .env*
 !.env.example
+!.env.production
 .DS_Store
 .vercel/
 .vercel
 .local/
+
+server/generated/
+__pycache__/
+*.pyc

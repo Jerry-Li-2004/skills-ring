@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowRight, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { EntryIntro } from "./EntryIntro";
 import { SkillOrbit } from "./experience";
+import { authenticatedFetch, supabase } from "./supabase";
 import "./auth.css";
 
 export type Account = {
@@ -11,64 +12,54 @@ export type Account = {
   status: "Active";
 };
 
-type Response = { user?: Account; error?: string };
-
-async function request(path: string, body?: object): Promise<Response> {
-  const response = await fetch(`/api/auth/${path}`, {
-    method: body === undefined ? "GET" : "POST",
-    credentials: "same-origin",
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const data = (await response.json()) as Response;
-  if (!response.ok) throw new Error(data.error || "The request could not be completed.");
-  return data;
-}
-
 export function AuthGate({ children }: { children: (account: Account, logout: () => Promise<void>) => ReactNode }) {
   const [account, setAccount] = useState<Account | null>(null);
   const [checking, setChecking] = useState(true);
-  const [mode, setMode] = useState<"login" | "register">("login");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    request("me").then((data) => setAccount(data.user || null)).catch(() => setAccount(null))
-      .finally(() => setChecking(false));
+    let active = true;
+    void authenticatedFetch("/api/auth/me").then(async response => {
+      if (response.ok) {
+        const data = await response.json();
+        if (active) setAccount(data.user);
+      } else if (response.status === 401) {
+        localStorage.removeItem("sr-registration-token");
+      }
+    }).catch(() => {}).finally(() => { if (active) setChecking(false); });
+    return () => { active = false; };
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const password = String(data.get("password") || "");
-    if (mode === "register" && password !== String(data.get("confirmPassword") || "")) {
-      setError("Passwords do not match.");
-      return;
-    }
+    const data = new FormData(event.currentTarget);
     setBusy(true);
     setError("");
     try {
-      const result = await request(mode, {
-        name: mode === "register" ? String(data.get("name") || "") : undefined,
-        email: String(data.get("email") || ""),
-        password,
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: data.get("name"), email: data.get("email") }),
       });
-      setAccount(result.user || null);
-      form.reset();
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Registration is unavailable. Please try again.");
+      localStorage.setItem("sr-registration-token", result.token);
+      localStorage.setItem(`skills-ring-mode-v1-${result.user.userId}`, "live");
+      setAccount(result.user);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The account service is unavailable.");
-    } finally {
-      setBusy(false);
-    }
+      setError(cause instanceof Error ? cause.message : "Registration is unavailable. Please try again.");
+    } finally { setBusy(false); }
   }
 
   async function logout() {
-    await request("logout", {});
+    localStorage.removeItem("sr-registration-token");
+    await supabase?.auth.signOut({ scope: "local" });
     setAccount(null);
   }
 
-  if (checking) return <div className="auth-status" role="status">Checking your session…</div>;
+  function focusRegistration() { document.getElementById("registration-name")?.focus(); }
+  if (checking) return <div className="auth-status" role="status">Opening your workspace…</div>;
   if (account) return <EntryIntro>{children(account, logout)}</EntryIntro>;
 
   return (
@@ -79,35 +70,27 @@ export function AuthGate({ children }: { children: (account: Account, logout: ()
           skills<span className="brand-light">ring</span>
         </a>
         <span className="auth-home-header-note">A little give. A lot of possibility.</span>
-        <button className="auth-home-header-action" type="button" onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}>
-          {mode === "login" ? "Join the ring" : "Sign in"} <ArrowRight size={16} />
+        <button className="auth-home-header-action" type="button" onClick={focusRegistration}>
+          Join the ring <ArrowRight size={16} />
         </button>
       </header>
       <main className="auth-home-content" id="top">
         <div className="auth-home-grid">
           <div className="auth-home-showcase">
             <span className="auth-home-eyebrow"><Sparkles size={15} /> THE SKILL-SWAP COMMUNITY</span>
-            <SkillOrbit onExplore={() => setMode("register")} onAddSkills={() => setMode("register")} />
+            <SkillOrbit onExplore={focusRegistration} onAddSkills={focusRegistration} />
           </div>
           <section className="auth-card" aria-labelledby="auth-title">
             <span className="auth-card-kicker">YOUR SPACE IN THE RING</span>
-            <h1 id="auth-title">{mode === "register" ? "Make room for more." : "Welcome back."}</h1>
-            <p className="auth-intro">{mode === "register" ? "Create an account to explore what your skills can become." : "Sign in to explore skills, exchanges, and the demo workspace."}</p>
+            <h1 id="auth-title">Make room for more.</h1>
+            <p className="auth-intro">Your workspace starts with 2 discovery matches and 1 example exchange, personalized to your profile. Add your own skills whenever you’re ready.</p>
             <form onSubmit={submit}>
-              {mode === "register" && <label>Display name<input name="name" autoComplete="name" minLength={2} maxLength={80} placeholder="What should we call you?" required /></label>}
+              <label>Display name<input id="registration-name" name="name" autoComplete="name" minLength={2} maxLength={80} placeholder="What should we call you?" required /></label>
               <label>Email<input name="email" type="email" autoComplete="email" maxLength={254} placeholder="you@example.com" required /></label>
-              <label>Password<input name="password" type="password" autoComplete={mode === "register" ? "new-password" : "current-password"} minLength={8} maxLength={128} placeholder={mode === "register" ? "At least 8 characters" : "Your password"} required /></label>
-              {mode === "register" && <>
-                <p className="auth-hint">At least 8 characters; a longer passphrase is safer.</p>
-                <label>Confirm password<input name="confirmPassword" type="password" autoComplete="new-password" placeholder="Enter your password again" required /></label>
-              </>}
               {error && <p className="auth-error" role="alert">{error}</p>}
-              <button className="auth-submit" type="submit" disabled={busy}>{busy ? "Please wait…" : mode === "register" ? "Create account" : "Sign in"} {!busy && <ArrowRight size={17} />}</button>
+              <button className="auth-submit" type="submit" disabled={busy}>{busy ? "Opening your workspace…" : "Join and start exploring"} {!busy && <ArrowRight size={17} />}</button>
             </form>
-            <button className="auth-switch" type="button" onClick={() => { setMode(mode === "register" ? "login" : "register"); setError(""); }}>
-              {mode === "register" ? "Already have an account? Sign in" : "New here? Create an account"}
-            </button>
-            <p className="auth-card-footnote"><ShieldCheck size={15} /> Your account is real; the exchange workspace currently uses fictional demo participants.</p>
+            <p className="auth-card-footnote">Your profile stays available in this browser. Clearing browser data or leaving this profile means registering a new one.</p>
           </section>
         </div>
         <div className="auth-home-features" aria-label="How Skills-Ring works">

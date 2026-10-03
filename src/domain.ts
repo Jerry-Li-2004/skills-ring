@@ -1,4 +1,4 @@
-export const library = {
+export const library: Record<string, string[]> = {
   Programming: [
     "Python",
     "Java",
@@ -38,6 +38,8 @@ export const library = {
     "Public Speaking",
     "Other",
   ],
+  Productivity: ["Notion Setup", "Time Planning", "Slide Design", "Personal Budgeting", "Other"],
+  "Daily Life": ["Cooking Basics", "Moving Help", "Grocery Planning", "Plant Care", "Basic Sewing", "Other"],
   Music: ["Guitar", "Piano", "Singing", "Other"],
 };
 export const slots = [
@@ -51,11 +53,8 @@ export const slots = [
   "Sunday Afternoon",
   "Sunday Evening",
 ];
-export type Person = "alice" | "bob" | "charlie" | "david" | "maya" | "james";
-export const people: Record<
-  Person,
-  { name: string; initials: string; color: string }
-> = {
+export type Person = string;
+export const people: Record<Person, { name: string; initials: string; color: string }> = {
   alice: { name: "Alice Chen", initials: "AC", color: "purple" },
   bob: { name: "Bob Wilson", initials: "BW", color: "orange" },
   charlie: { name: "Charlie Lee", initials: "CL", color: "blue" },
@@ -63,11 +62,18 @@ export const people: Record<
   maya: { name: "Maya Patel", initials: "MP", color: "green" },
   james: { name: "James Wong", initials: "JW", color: "yellow" },
 };
+const personColors = ["purple", "orange", "blue", "pink", "green", "yellow"];
+export function registerPerson(userId: Person, displayName: string) {
+  const initials = displayName.trim().split(/\s+/).map((word) => word[0]).join("").slice(0, 2).toUpperCase() || "?";
+  const color = personColors[Math.abs([...userId].reduce((sum, char) => sum + char.charCodeAt(0), 0)) % personColors.length];
+  people[userId] = { name: displayName || userId, initials, color };
+  return people[userId];
+}
 export type Listing = {
   id: string;
   user: Person;
   kind: "offer" | "need";
-  category: keyof typeof library;
+  category: string;
   skill: string;
   duration: number;
   sessions: number;
@@ -188,6 +194,7 @@ export type Evaluation = {
   comment: string;
 };
 export type State = {
+  starterAvailable?: boolean;
   version: 1;
   listings: Listing[];
   exchanges: Exchange[];
@@ -199,9 +206,11 @@ export type State = {
   messages?: { id: string; exchange: string; author: Person; text: string; createdAt: string }[];
   bookings?: { id: string; exchange: string; leg: string; start: string; timezone: string; place: string; status: "proposed" | "accepted" | "cancelled" | "completed" | "no-show"; acceptedBy: Person[]; reminded?: boolean }[];
   notifications?: { id: string; user: Person; exchange: string; text: string; createdAt: string; read: boolean }[];
+  liveStats?: Record<string, { reliability: number; coldStart: boolean; services: number }>;
+  liveMatches?: Record<Person, Leg[][]>;
 };
 export const id = () => crypto.randomUUID();
-export const name = (p: Person) => people[p].name.split(" ")[0];
+export const name = (p: Person) => (people[p]?.name || p).split(" ")[0];
 export const participants = (e: Exchange) => [
   ...new Set(e.legs.flatMap((l) => [l.provider, l.receiver])),
 ];
@@ -274,6 +283,14 @@ export function availableListing(state: State, listing: Listing): Listing {
   return { ...listing, sessions: Math.max(0, listing.sessions - reserved) };
 }
 export function findMatches(state: State, user: Person): Leg[][] {
+  if (state.liveMatches) {
+    return (state.liveMatches[user] || []).filter((route) =>
+      !state.exchanges.some((exchange) =>
+        !["withdrawn", "defaulted"].includes(exchange.status) &&
+        route.every((leg) => exchange.legs.some((existing) => existing.id === leg.id)),
+      ),
+    );
+  }
   const listings = state.listings
     .map((l) => availableListing(state, l))
     .filter((l) => l.sessions > 0);
@@ -495,6 +512,10 @@ export function transition(input: State, action: Action): State {
       )
     )
       throw Error("The route must form a complete cycle.");
+    const rankedRoute = state.liveMatches && Object.values(state.liveMatches).some((routes) =>
+      routes.some((route) => route.length === action.legs.length &&
+        route.every((leg) => action.legs.some((candidate) => candidate.id === leg.id))));
+    if (state.liveMatches && !rankedRoute) throw Error("This match is no longer available.");
     if (
       !action.legs.every((l) => {
         const o = state.listings.find((x) => x.id === l.offer),
@@ -502,7 +523,10 @@ export function transition(input: State, action: Action): State {
         return (
           o &&
           n &&
-          compatible(availableListing(state, o), availableListing(state, n)) &&
+          (rankedRoute
+            ? o.status === "Active" && n.status === "Active" &&
+              availableListing(state, o).sessions >= n.sessions && o.skill === n.skill
+            : compatible(availableListing(state, o), availableListing(state, n))) &&
           Number.isInteger(l.sessions) && l.sessions >= 1 && l.sessions <= availableListing(state, n).sessions &&
           Number.isInteger(l.duration) && l.duration >= 15 && l.duration <= 180 &&
           ["Online", "Offline"].includes(l.mode) &&
@@ -924,6 +948,16 @@ export function reliability(state: State, user: Person) {
     evals = state.evaluations.filter((e) =>
       sessions.some((s) => s.id === e.session),
     );
+  const live = state.liveStats?.[user];
+  if (live && sessions.length === 0 && evals.length === 0) {
+    return {
+      sessions: live.services,
+      reviews: live.coldStart ? 0 : 1,
+      onTime: live.coldStart ? null : Math.round(live.reliability),
+      completed: live.coldStart ? null : Math.round(live.reliability),
+      fulfilled: 0,
+    };
+  }
   return {
     sessions: sessions.length,
     reviews: evals.length,

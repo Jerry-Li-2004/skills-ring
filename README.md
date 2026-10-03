@@ -1,35 +1,71 @@
 # Skills-Ring
 
-An Apple-inspired community for individual skill sharing and non-monetary service exchange. This branch adds database-backed registration and login to the existing React/Vite demo.
+An Apple-inspired community for individual skill sharing and non-monetary service exchange. The app combines a React/Vite frontend, authenticated Node API, Python recommender, and Supabase storage.
+
+## Production deployment
+
+Live site: https://skills-ring.vercel.app — Vercel project `skills-ring` in `jerry-li-0704`, backed by the `skillsring` Supabase project `mwyictnozocjicjeacqk` in Singapore.
+
+The Vite frontend is static, `/api/*` runs the Node 24 server function, and `/api/recommend` runs a separate Python 3.12 function. Production does not use SQLite or spawn Python from Node. Anyone can register with a display name and email and enter immediately, without a password or email verification. The server saves a new profile and issues a signed registration receipt, remembered in that browser. API requests validate this receipt and the active profile; privileged database access stays on the server. Existing Supabase access tokens remain supported.
 
 ## Run locally
 
-Use Node.js 22.13+ or Node.js 24. In separate terminals:
+Use Node 24 and Python 3.12+. Copy `.env.example` to `.env.local` and fill the public project key and server secret. Never put the server secret in a `VITE_*` variable.
 
 ```sh
 npm ci
 npm run dev:api
+# In another terminal:
 npm run dev
 ```
 
-For local registration and login, set `PUBLIC_ORIGIN` in the API terminal to the exact URL printed by Vite (for example, `http://127.0.0.1:5173`; `localhost` and `127.0.0.1` are not interchangeable here), then start or restart `npm run dev:api`. In PowerShell, use `$env:PUBLIC_ORIGIN = 'http://127.0.0.1:5173'`; if script execution blocks `npm`, use `npm.cmd` instead.
-
-Open the URL printed by Vite. To validate and build:
+Vite proxies `/api` to port 3001. To serve the compiled app and API together:
 
 ```sh
-npm test
-npm run test:auth
 npm run build
 npm start
 ```
 
-`npm run dev:api` starts the account API on `127.0.0.1:3001`. Vite proxies `/api` to it. After `npm run build`, `npm start` serves both the built site and API on port 3001. Registration asks for display name, email, and a password of at least 8 characters (longer passphrases are recommended). It creates a `usr_<UUID>` user ID and atomically inserts into the **shared** `users`, `auth_credentials`, and `auth_sessions` tables. By default this is the sibling `../database_demo2/skill_swap_algorithm_input.db`, which already contains the 300 synthetic users, offers, and needs. `auth_credentials` and `auth_sessions` live in that same SQLite file but remain separate from public profile data. Set `SKILLS_RING_DB_PATH` to another full Skills-Ring SQLite database if needed. Passwords are stored only as salted scrypt hashes; browser sessions use an HttpOnly, SameSite=Strict cookie.
+Both local modes use the same registration flow and database as the deployed app. The local API runs the Python recommender as a subprocess; Vercel calls the protected Python function over HTTPS. For an isolated development dataset, configure a separate Supabase project.
 
-Email verification and password reset are **not** implemented. A person can register an email address they do not own; do not open public self-registration without an abuse/recovery policy. Synthetic users have no credentials and cannot sign in or consent to a real exchange until an activation process is added. The existing exchange workspace still uses fictional local demo participants and is explicitly labeled as such after sign-in. Registered users are now in the same SQL `users` table and can be referenced by future offers/needs, but the current listing and exchange UI still uses local demo state.
+## Deploy updates
 
-## Deployment boundary
+Apply committed migrations to the intended Supabase project before deploying. The server depends on `commit_app_mutation`, `app_revision`, the recommendation lease functions, and `register_with_starter` / `account_starter_workspaces`. Keep browser roles denied on the raw tables; the authenticated Node gateway performs ownership checks and filters private exchange records.
 
-The old `vercel.json` builds a static Vite site only; it cannot host this file-backed account API or persist its SQLite database. For real accounts, deploy the Node server with a persistent disk and HTTPS, set `SKILLS_RING_DB_PATH` to the full application database on that disk, set `PUBLIC_ORIGIN` to the exact public HTTPS origin, and set `AUTH_SECURE_COOKIES=true`. Keep the database file and backups private: it now contains authentication tables. Do not hand the entire live database to the algorithm team; use a sanitized data export that excludes credentials and sessions. The in-memory login rate limiter is suitable for one server process; a multi-instance deployment needs a shared limiter. The app has not been deployed or penetration-tested on this branch.
+Configure Vercel production and preview variables:
+
+- `SUPABASE_URL`: server database URL.
+- `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_PUBLISHABLE_KEY`: optional compatibility for existing Supabase login sessions.
+- `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`): server-only secret.
+- `CRON_SECRET`: randomly generated secret for the Python worker and cron.
+- `VERCEL_AUTOMATION_BYPASS_SECRET`: needed when preview protection blocks internal calls to that preview's Python worker.
+
+```sh
+npm test
+npm run test:auth
+npm run test:production
+npm run test:python
+npm run build
+vercel deploy --prod
+```
+
+Vercel runs one daily recommendation refresh at 19:00 UTC (03:00 Hong Kong time), compatible with the current Hobby plan. Mutations also await an immediate refresh. A failed refresh does not discard an already committed change; the UI reports that recommendations are pending. Function execution is bounded to 300 seconds.
+
+Registration requires no Supabase Auth dashboard changes or email delivery setup. Names and email addresses are self-reported. Each registration creates a distinct profile, even when details match. Returning visits in the same browser reuse the saved receipt; leaving a profile or clearing browser data requires a new registration and does not recover previous exchanges. Keep the server secret stable because rotating it invalidates registration receipts.
+
+## Data integrity and authorization
+
+The server derives exchange state from stored records and a requested action. It rejects another participant's identity, checks provider-only completion, and reserves moderator operations. A database transaction saves related rows atomically and rejects writes based on an outdated global revision. A separate database lease serializes hosted recommendation jobs. Private exchange details, messages, bookings, and notifications are returned only to their participants. Display names never select an account identity. Live failures show an error instead of silently opening a fictional workspace.
+
+## Verification and remaining product boundaries
+
+`server/production.test.mjs` covers verified identity, private snapshot filtering, actor impersonation, and atomic operation batching. `scripts/live-smoke.mjs` creates temporary confirmed test accounts, verifies listing → recommendation → proposal → independent confirmations → settlement, and removes its own records. It requires a server secret and intentionally writes only test records to the configured project:
+
+```sh
+node --env-file=.env.production --env-file=.env.local scripts/live-smoke.mjs https://skills-ring.vercel.app
+```
+
+The entry form requires only a display name and email. There is no password, confirmation email, or password-reset step. Custom skill moderation, administrator dispute resolutions, and simulated deadline defaults require a trusted moderation workflow; the production API rejects those actions. Notifications are in-app records; no push/SMS/email exchange notifications are sent. The synthetic seeded community remains demonstration data, and those users cannot independently consent. This is a deployed application foundation, not a claim that community moderation, operational support, or an independent security audit is complete.
 
 ## What works
 
@@ -51,6 +87,8 @@ The old `vercel.json` builds a static Vite site only; it cannot host this file-b
 - Demo Studio in the top bar opens the repeatable stories. The motion toggle pauses decorative animation; system reduced-motion preferences are respected.
 
 ## Demo walkthroughs
+
+These retained development scenarios describe the local domain simulator. New registrations atomically create a private starter workspace in Supabase, personalized with the registered name and user ID. The main workspace immediately contains two discovery matches, one partly settled example exchange, and starter offers/needs. Progress persists in `account_starter_workspaces` with optimistic concurrency. These examples appear alongside subsequently added real listings, without a separate onboarding mode. Fictional peers and history do not enter community matching or reputation calculations. Existing profiles are not backfilled. The optional Demo Studio still uses local browser storage.
 
 Use **Workspace settings** or **Try a demo scenario**. Loading a scenario replaces local demo data. Use the header participant selector to view any fictional participant’s ledger. Named confirmation buttons explicitly simulate the respective person’s agreement; these are not authenticated approvals.
 
@@ -83,11 +121,11 @@ In **Changes & recovery**, propose a new total session count within offer capaci
 - `src/theme.css`: Apple-inspired visual treatment, transitions, and responsive motion.
 - `src/experience.tsx`: interactive hero, motion preference, animated values, exchange journey, and settlement celebration.
 - `scripts/browser-smoke.js`: browser-side smoke test exercising visible controls; run with an already-open local app using `agent-browser eval --stdin < scripts/browser-smoke.js`. This deliberately resets the local demo workspace.
-- Storage key: `skills-ring-demo-v1`. State is local to one browser/device; there is no shared backend, authentication, real notification delivery, or independent service verification. The header selector and administrative decisions are explicitly simulated.
-- Conditions use conservative exact matching. The form supports multiple coarse availability slots and optional date ranges. Session booking, messages, notifications, reminders, and discovery events are local demo records only; they are not delivered to other devices or participants. There is no collateral, payment, or email integration.
+- Storage key: `skills-ring-demo-v1-<userId>` (mode: `skills-ring-mode-v1-<userId>`). Local scenario data uses this key. Live exchange state is stored transactionally in Supabase; the browser does not persist live snapshots under this key.
+- Conditions use conservative exact matching. The form supports multiple coarse availability slots and optional date ranges. Live session bookings, messages, and in-app notifications are stored in each exchange aggregate and refreshed across participant devices; no external notifications are delivered. There is no collateral, payment, or email integration.
 - Contributions and session records preserve original claims. Dispute resolutions record separate recognized-duration adjustments. Remaining sessions and commitment/settlement state are derived, not editable balances. For the demo, each accepted service leg is treated as a concrete obligation, without tokens or prices.
 - The imbalance threshold is configurable through the domain helper (default 25% or different session counts). Participants’ consent is not a guarantee of substantive fairness.
 
 The receive-first limit protects contributors but also constrains honest newcomers who need several services before reciprocating. Skills-Ring breaks when value has already been delivered, the responsible participant defaults, and no acceptable replacement or alternative route exists. It can preserve the claim, restrict the defaulter, and record the loss; it cannot recreate an irreversible service or guarantee repayment. Small networks, subjective service quality, collusion, pressure to agree, and rejected replacements remain real limits.
 
-Before using this with a real community, add server-side transactional storage, authenticated identities and authorization, multi-user concurrency and approval handling, trusted timestamps, moderation and dispute permissions, and privacy/retention controls.
+Before a broad community launch, finish SMTP and Auth URL setup, establish moderator access and dispute procedures, and define privacy/retention and operational support policies. The authenticated transaction layer is implemented and tested; an independent security review remains advisable.

@@ -78,6 +78,7 @@ import {
   SettlementMoment,
   useMotionPreference,
 } from "./experience";
+import { fetchLiveSnapshot, liveSnapshotToState, resolveLiveUser, syncLiveExchange, syncLiveListing, LiveSyncError } from "./live";
 const STORAGE = "skills-ring-demo-v1";
 const nav = [
   { label: "Home", icon: Home },
@@ -127,10 +128,21 @@ function SkillIcon({ skill }: { skill: string }) {
   );
 }
 function App({ account, onLogout }: { account: Account; onLogout: () => Promise<void> }) {
+  const [demo, setDemo] = useState(false);
+  function changeMode(next: boolean) {
+    try { localStorage.setItem(`skills-ring-mode-v1-${account.userId}`, next ? "demo" : "live"); } catch { /* Mode still changes for this visit. */ }
+    setDemo(next);
+  }
+  return <Workspace key={`${account.userId}-${demo}`} account={account} onLogout={onLogout} demo={demo} onModeChange={changeMode} />;
+}
+function Workspace({ account, onLogout, demo, onModeChange }: {
+  account: Account; onLogout: () => Promise<void>; demo: boolean; onModeChange: (demo: boolean) => void;
+}) {
+  const demoStorage = `${STORAGE}-${account.userId}`;
   const [motion, setMotion] = useMotionPreference();
   const [state, setState] = useState<State>(() => {
     try {
-      const s = JSON.parse(localStorage.getItem(STORAGE) || "null");
+      const s = JSON.parse(localStorage.getItem(demoStorage) || "null");
       if (s?.version !== 1 || !Array.isArray(s.exchanges)) return seed();
       // Migrate the fictional demo venue label while preserving existing work.
       const saved = s as State;
@@ -165,6 +177,10 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
     [menu, setMenu] = useState(false),
     [toast, setToast] = useState(""),
     [storageError, setStorageError] = useState(false);
+  const [dataMode, setDataMode] = useState<"loading" | "live" | "demo" | "error">(demo ? "demo" : "loading");
+  const [liveError, setLiveError] = useState("");
+  const snapshotEpoch = useRef(0);
+  const activeExchangeSyncs = useRef(0);
   const [initialReviewKey, setInitialReviewKey] = useState<string | null>(null);
   const [discoveryEpoch, setDiscoveryEpoch] = useState(0);
   const [modal, setModal] = useState<
@@ -175,14 +191,45 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
     [listingKind, setListingKind] = useState<"offer" | "need">("offer");
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE, JSON.stringify(state));
+      if (!demo || state.liveStats) return;
+      localStorage.setItem(demoStorage, JSON.stringify(state));
       setStorageError(false);
     } catch {
       setStorageError(true);
     }
-  }, [state]);
+  }, [state, demo, demoStorage]);
+  useEffect(() => {
+    if (demo) return;
+    let cancelled = false;
+    const refresh = async (initial = false) => {
+      const request = ++snapshotEpoch.current;
+      try {
+        const snapshot = await fetchLiveSnapshot();
+        if (cancelled || request !== snapshotEpoch.current) return;
+        const next = liveSnapshotToState(snapshot);
+        setState(next);
+        setUser(resolveLiveUser(snapshot, account.name, account.userId));
+        setDataMode("live");
+        setLiveError("");
+      } catch (error) {
+        if (cancelled || request !== snapshotEpoch.current) return;
+        if (initial) {
+          setDataMode("error");
+        }
+        setLiveError(error instanceof Error ? error.message : "Live data is unavailable.");
+      }
+    };
+    void refresh(true);
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible" && activeExchangeSyncs.current === 0) void refresh();
+    }, 30_000);
+    const onFocus = () => { if (activeExchangeSyncs.current === 0) void refresh(); };
+    window.addEventListener("focus", onFocus);
+    return () => { cancelled = true; window.clearInterval(poll); window.removeEventListener("focus", onFocus); };
+  }, [account.name, account.userId, demo]);
   useEffect(() => {
     const checkTimedEvents = () => setState((current) => {
+      if (current.liveStats) return current;
       const proposal = current.exchanges.find((e) => e.status === "proposed" && e.expiresAt && Date.parse(e.expiresAt) <= Date.now());
       if (proposal) return transition(current, { type: "expireProposal", exchange: proposal.id });
       const booking = current.bookings?.find((b) => b.status === "accepted" && !b.reminded && Date.parse(b.start) > Date.now() && Date.parse(b.start) - Date.now() <= 86400000);
@@ -199,9 +246,35 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
     }
   }, [toast]);
   function act(action: Action): boolean {
+    if (dataMode === "loading" || dataMode === "error") {
+      setToast("Wait for the live workspace to load before making changes.");
+      return false;
+    }
+    if (dataMode === "live" && action.type !== "readNotifications") {
+      if (activeExchangeSyncs.current) { setToast("Your previous change is still saving."); return false; }
+      let next: State;
+      try { next = transition(state, action); } catch (error) { setToast((error as Error).message); return false; }
+      const sessionId = action.type === "dispute" ? action.session : action.type === "evaluate" ? action.evaluation.session : null;
+      const exchangeId = "exchange" in action ? action.exchange : state.sessions.find(s => s.id === sessionId)?.exchange;
+      const exchange = action.type === "propose" ? next.exchanges.at(-1) : next.exchanges.find(e => e.id === exchangeId);
+      if (!exchange) { setToast("Use the listing form to update your listings."); return false; }
+      activeExchangeSyncs.current += 1;
+      setToast("Saving your change…");
+      void syncLiveExchange(next, exchange, action, user).then(async result => {
+        const snapshot = await fetchLiveSnapshot();
+        ++snapshotEpoch.current;
+        setState(liveSnapshotToState(snapshot));
+        setUser(resolveLiveUser(snapshot, account.name, account.userId));
+        if (action.type === "propose" && result.exchangeId) setSelected(result.exchangeId);
+        setToast(result.warning || "Your change has been saved.");
+      }).catch(error => setToast(error instanceof Error ? error.message : "Your change could not be saved."))
+        .finally(() => { activeExchangeSyncs.current -= 1; });
+      return true;
+    }
     try {
       const next = transition(state, action);
       setState(next);
+      if (action.type === "propose") setSelected(next.exchanges.at(-1)!.id);
       if (action.type === "complete") {
         const exchange = next.exchanges.find((e) => e.id === action.exchange);
         setToast(
@@ -228,6 +301,12 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
     setQuery("");
     window.scrollTo({ top: 0, behavior: "instant" });
   }
+  if (dataMode === "loading" || dataMode === "error") return <main className="auth-status" role="status">
+    <div><h1>{dataMode === "loading" ? "Loading your workspace…" : "Your workspace is temporarily unavailable"}</h1>
+    {liveError && <p>{liveError}</p>}
+    {dataMode === "error" && <button className="button" onClick={() => window.location.reload()}>Try again</button>}
+    <button className="button" onClick={() => void onLogout()}>Leave profile</button></div>
+  </main>;
   const myExchanges = state.exchanges.filter(
     (e) => participants(e).includes(user) || e.recovery?.replacement === user,
   );
@@ -252,15 +331,55 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
     setModal("listing");
   };
   function propose(legs: Leg[]): boolean {
+    return act({ type: "propose", legs });
+  }
+  async function refreshAfterListingWrite() {
+    const request = ++snapshotEpoch.current;
+    const snapshot = await fetchLiveSnapshot();
+    if (request !== snapshotEpoch.current) return;
+    setState(liveSnapshotToState(snapshot));
+    setUser(resolveLiveUser(snapshot, account.name, account.userId));
+    setLiveError("");
+  }
+  async function changeListingStatus(listing: Listing, status: "Active" | "Paused" | "Fulfilled" | "Archived" | "Deleted") {
+    if (dataMode !== "live") return act({ type: "setListingStatus", id: listing.id, status });
     try {
-      const next = transition(state, { type: "propose", legs });
-      setState(next);
-      setSelected(next.exchanges.at(-1)!.id);
+      transition(state, { type: "setListingStatus", id: listing.id, status });
+      const result = await syncLiveListing({ ...listing, status: status === "Deleted" ? "Archived" : status });
+      await refreshAfterListingWrite();
+      setToast(result.warning || "Your listing and matches have been refreshed.");
       return true;
-    } catch (e) {
-      setToast((e as Error).message);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "The live listing could not be updated.");
       return false;
     }
+  }
+  async function saveListing(listing: Listing, successText?: string) {
+    const editing = Boolean(editingListing);
+    const action: Action = editing
+      ? { type: "editListing", listing }
+      : { type: "listing", listing };
+    if (dataMode === "live") {
+      try {
+        const result = await syncLiveListing(listing);
+        await refreshAfterListingWrite();
+        setModal(null);
+        setEditingListing(null);
+        setToast(result.warning || successText || (editing ? "Your listing was updated and matches have been refreshed." : "Your listing was published and matches have been refreshed."));
+      } catch (error) {
+        if (error instanceof LiveSyncError && error.persisted) act(action);
+        setToast(error instanceof Error ? error.message : "The live listing could not be saved or refreshed.");
+      }
+      return;
+    }
+    if (!act(action)) return;
+    setModal(null);
+    setEditingListing(null);
+    setToast(
+      listing.skill === "Other" && !listing.otherApproved
+        ? "Your skill suggestion is waiting in Demo Studio review before it can match."
+        : "Your listing was saved. Compatible matches have been refreshed.",
+    );
   }
   const openMatches = () => go("Discover matches");
   return (
@@ -301,9 +420,9 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
           <kbd>⌕</kbd>
         </div>
         <div className="top-actions">
-          <button className="demo-launcher" onClick={() => setModal("demo")}>
+          {dataMode === "demo" && <button className="demo-launcher" onClick={() => setModal("demo")}>
             <Play size={13} fill="currentColor" /> Demo studio
-          </button>
+          </button>}
           <button
             className="icon-button motion-toggle"
             aria-label={motion ? "Pause motion" : "Enable motion"}
@@ -331,7 +450,7 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
             <div className="account-menu-panel">
               <strong>{account.name}</strong>
               <small>{account.email}</small>
-              <button className="account-logout" onClick={() => void onLogout().catch(() => setToast("Could not sign out. Please try again."))}>Sign out</button>
+              <button className="account-logout" onClick={() => void onLogout().catch(() => setToast("Could not leave your profile. Please try again."))}>Leave profile</button>
             </div>
           </details>
         </div>
@@ -374,20 +493,26 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
           </button>
           <div className="sidebar-footer">
             <span className="live-dot" />
-            Local demo · Saved on this device
+            {dataMode === "live" ? "Live Supabase community" : "Local demo · Saved on this device"}
           </div>
         </div>
       </aside>
       <main>
         <div className="workspace-width" key={page}>
-          <div className="demo-identity-note">
-            <span><strong>Demo workspace</strong> · These exchanges use fictional participants. Your account is {account.name}.</span>
+          {dataMode === "demo" && <div className="demo-identity-note">
+            <span>
+              <strong>Your example workspace</strong>
+              {` · Welcome, ${account.name}. Try Alice’s sample skills, matches, and exchange. Changes stay in this demo.`}
+            </span>
+            <button className="button small-button" onClick={() => onModeChange(false)}>Open my live workspace <ArrowUpRight size={16} /></button>
             <label>View as
               <select aria-label="Fictional demo participant" value={user} onChange={(e) => setUser(e.target.value as Person)}>
-                {Object.keys(people).map((p) => <option key={p} value={p}>{people[p as Person].name}</option>)}
+                {["alice", "bob", "charlie", "david"].map((p) => <option key={p} value={p}>{people[p as Person].name}</option>)}
               </select>
             </label>
-          </div>
+          </div>}
+          {state.starterAvailable && <div className="notice"><Sparkles size={20} /><p>Your starter skills, matches, and example exchange are saved to your profile. Explore them here, or add your own offers and requests whenever you’re ready.</p></div>}
+          {liveError && <div className="warning"><AlertTriangle size={18} /> {liveError}</div>}
           {storageError && (
             <div className="warning">
               <AlertTriangle size={18} />
@@ -707,15 +832,15 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
                             <p className="muted">{matches.filter((route) => route.some((leg) => leg.offer === l.id || leg.need === l.id)).length} available matches · {l.status !== "Active" ? "Reactivate this listing to appear in discovery." : availableListing(state, l).sessions === 0 ? "All sessions are reserved by existing exchanges." : !state.listings.some((other) => other.user !== user && other.kind !== l.kind && other.skill === l.skill && other.status === "Active") ? "No active counterpart lists this skill yet." : "A reciprocal route is missing, or session terms, mode, location or availability do not align."}</p>
                             <div className="button-row listing-actions">
                               <button className="text-link" onClick={() => edit(l)}>Edit</button>
-                              <button className="text-link" onClick={() => { act({ type: "duplicateListing", id: l.id }); setToast("Draft copy created. Review and activate it when ready."); }}>Duplicate</button>
+                              <button className="text-link" onClick={() => { if (dataMode === "live") void saveListing({ ...l, id: id(), status: "Paused" }, "Draft copy saved. Review and activate it when ready."); else { act({ type: "duplicateListing", id: l.id }); setToast("Draft copy created. Review and activate it when ready."); } }}>Duplicate</button>
                               <button className="text-link" onClick={() => {
                                 const inUse = state.exchanges.some((e) => !["settled", "withdrawn", "defaulted"].includes(e.status) && e.legs.some((leg) => leg.offer === l.id || leg.need === l.id));
                                 if (inUse && !window.confirm("This listing supports an active proposal or exchange. Pause it for new matches?")) return;
-                                act({ type: "setListingStatus", id: l.id, status: l.status === "Active" ? "Paused" : "Active" });
+                                void changeListingStatus(l, l.status === "Active" ? "Paused" : "Active");
                               }}>{l.status === "Active" ? "Pause" : "Resume"}</button>
-                              <button className="text-link" onClick={() => act({ type: "setListingStatus", id: l.id, status: "Fulfilled" })}>Mark fulfilled</button>
-                              <button className="text-link" onClick={() => act({ type: "setListingStatus", id: l.id, status: "Archived" })}>Archive</button>
-                              <button className="text-link" onClick={() => { const inUse = state.exchanges.some((e) => !["settled", "withdrawn", "defaulted"].includes(e.status) && e.legs.some((leg) => leg.offer === l.id || leg.need === l.id)); if (inUse) { setToast("This listing supports an active proposal or exchange. Archive it when the exchange is finished."); return; } if (window.confirm("Delete this listing? This cannot be undone.")) act({ type: "setListingStatus", id: l.id, status: "Deleted" }); }}>Delete</button>
+                              <button className="text-link" onClick={() => { void changeListingStatus(l, "Fulfilled"); }}>Mark fulfilled</button>
+                              <button className="text-link" onClick={() => { void changeListingStatus(l, "Archived"); }}>Archive</button>
+                              <button className="text-link" onClick={() => { const inUse = state.exchanges.some((e) => !["settled", "withdrawn", "defaulted"].includes(e.status) && e.legs.some((leg) => leg.offer === l.id || leg.need === l.id)); if (inUse) { setToast("This listing supports an active proposal or exchange. Archive it when the exchange is finished."); return; } if (window.confirm("Delete this listing? This cannot be undone.")) void changeListingStatus(l, "Deleted"); }}>Delete</button>
                             </div>
                           </div>
                         ))}
@@ -843,7 +968,8 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
                     </div>
                   </div>
                   <div className="community-grid">
-                    {Object.entries(people).map(([p, person]) => {
+                    {(dataMode === "live" ? Object.keys(state.liveStats || {}) : Object.keys(people)).map((p) => {
+                      const person = people[p];
                       const r = reliability(state, p as Person);
                       return (
                         <section className="card member-card" key={p}>
@@ -884,9 +1010,9 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
             <button onClick={() => setModal("help")}>
               Learn about Skills-Ring <ArrowUpRight size={13} />
             </button>
-            <button className="demo-link" onClick={() => setModal("demo")}>
+            {dataMode === "demo" && <button className="demo-link" onClick={() => setModal("demo")}>
               Try a demo scenario
-            </button>
+            </button>}
           </footer>
         </div>
       </main>
@@ -896,6 +1022,7 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
             e={selectedExchange}
             state={state}
             user={user}
+            dataMode={dataMode}
             act={act}
           />
         </Modal>
@@ -910,13 +1037,8 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
             kind={listingKind}
             user={user}
             initial={editingListing}
-            onSave={(l) => {
-              if (!act(editingListing ? { type: "editListing", listing: l } : { type: "listing", listing: l })) return;
-              setModal(null);
-              setToast(
-                l.skill === "Other" && !l.otherApproved ? "Your skill suggestion is waiting in Demo Studio review before it can match." : "Your listing was saved. Compatible matches have been refreshed.",
-              );
-            }}
+            live={dataMode === "live"}
+            onSave={(l) => { void saveListing(l); }}
           />
         </Modal>
       )}
@@ -987,9 +1109,9 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
             <div className="notice">
               <BookOpen size={20} />
               <p>
-                Accounts use the shared SQLite database. This exchange workspace
-                still uses fictional participants and browser storage; dispute
-                administration is simulated. There are no payments or
+                Profiles and live exchanges are saved in Supabase. The example
+                workspace uses fictional participants and browser storage; dispute
+                administration in the demo is simulated. There are no payments or
                 transferable credits.
               </p>
             </div>
@@ -1003,7 +1125,12 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
             service ledger. Starting a scenario replaces the current local demo
             data.
           </p>
-          <div className="scenario-list">
+          <div className="button-row">
+            <button className="button" onClick={() => onModeChange(dataMode !== "demo")}>
+              {dataMode === "demo" ? "Open my live workspace" : "Explore the example demo"}
+            </button>
+          </div>
+          {dataMode === "demo" && <div className="scenario-list">
             {(
               [
                 {
@@ -1047,8 +1174,8 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
                 <ChevronRight size={20} />
               </button>
             ))}
-          </div>
-          {state.listings.some((l) => l.status === "Pending review") && <section className="recovery-section"><h3>Demo skill review queue</h3><p>These fictional suggestions stay out of matching until reviewed. Production moderation requires P0 accounts and P2 moderator permissions.</p>{state.listings.filter((l) => l.status === "Pending review").map((l) => <div className="booking-card" key={l.id}><strong>{people[l.user].name}: {l.otherSkill}</strong><p>{l.kind} · {l.category}</p><div className="button-row"><button className="button" onClick={() => act({ type: "reviewListing", id: l.id, approved: true })}>Approve suggestion</button><button className="button" onClick={() => act({ type: "reviewListing", id: l.id, approved: false })}>Reject suggestion</button></div></div>)}</section>}
+          </div>}
+          {dataMode === "demo" && state.listings.some((l) => l.status === "Pending review") && <section className="recovery-section"><h3>Demo skill review queue</h3><p>These fictional suggestions stay out of matching until reviewed. Production moderation requires P0 accounts and P2 moderator permissions.</p>{state.listings.filter((l) => l.status === "Pending review").map((l) => <div className="booking-card" key={l.id}><strong>{people[l.user].name}: {l.otherSkill}</strong><p>{l.kind} · {l.category}</p><div className="button-row"><button className="button" onClick={() => act({ type: "reviewListing", id: l.id, approved: true })}>Approve suggestion</button><button className="button" onClick={() => act({ type: "reviewListing", id: l.id, approved: false })}>Reject suggestion</button></div></div>)}</section>}
         </Modal>
       )}
       {modal === "notifications" && (
@@ -1363,7 +1490,9 @@ function ListingForm({
   user,
   initial,
   onSave,
+  live = false,
 }: {
+  live?: boolean;
   kind: Listing["kind"];
   user: Person;
   initial?: Listing | null;
@@ -1415,7 +1544,7 @@ function ListingForm({
         </button>
       </div>}
       <p>
-        Demo only · posting as fictional participant <strong>{people[user].name}</strong>.
+        {live ? "Posting as" : "Demo only · posting as fictional participant"} <strong>{people[user].name}</strong>.
         Each offer and need has its own preferences.
       </p>
       <div className="form-grid">
@@ -1433,7 +1562,7 @@ function ListingForm({
         <label>
           Skill
           <select name="skill" value={skill} onChange={(e) => setSkill(e.target.value)}>
-            {library[category].map((s) => (
+            {library[category].filter(s => !live || s !== "Other").map((s) => (
               <option key={s}>{s}</option>
             ))}
           </select>
@@ -1498,8 +1627,8 @@ function ListingForm({
           </select>
           <small>Choose one or more slots (hold Command or Control for multiple).</small>
         </label>
-        <label>From date <span className="muted">(optional)</span><input name="dateFrom" type="date" defaultValue={initial?.dateFrom || ""} /></label>
-        <label>Until date <span className="muted">(optional)</span><input name="dateTo" type="date" defaultValue={initial?.dateTo || ""} /></label>
+        {!live && <><label>From date <span className="muted">(optional)</span><input name="dateFrom" type="date" defaultValue={initial?.dateFrom || ""} /></label>
+        <label>Until date <span className="muted">(optional)</span><input name="dateTo" type="date" defaultValue={initial?.dateTo || ""} /></label></>}
       </div>
       <label>
         Conditions <span className="muted">(optional)</span>
@@ -1511,7 +1640,7 @@ function ListingForm({
         />
       </label>
       <small className="muted">
-        Conditions must match exactly for automatic matching. Other skills match only when both suggestions use the same name. Suggestions enter the Demo Studio review queue before matching.
+        Conditions must match exactly for automatic matching. Agree on exact session dates within an exchange.
       </small>
       <button className="button primary full-width" type="submit">
         {initial ? "Save changes" : `Publish ${currentKind}`}
@@ -1523,11 +1652,13 @@ function ExchangeDetails({
   e,
   state,
   user,
+  dataMode,
   act,
 }: {
   e: Exchange;
   state: State;
   user: Person;
+  dataMode: "loading" | "live" | "demo" | "error";
   act: (a: Action) => boolean;
 }) {
   const [tab, setTab] = useState("Overview"),
@@ -1643,7 +1774,7 @@ function ExchangeDetails({
                     }}
                   />
                 </div>
-                {canComplete && remaining(state, e, l) > 0 && (
+                {canComplete && remaining(state, e, l) > 0 && (dataMode !== "live" || l.provider === user) && (
                   <button
                     className="button full-width"
                     disabled={!!pending || !!state.bookings?.some((b) => b.exchange === e.id && b.leg === l.id && b.status === "accepted" && Date.parse(b.start) > Date.now())}
@@ -1669,8 +1800,9 @@ function ExchangeDetails({
               <button className="button" onClick={() => { setRevisionLegs(e.legs.map((l) => ({ ...l }))); setRevisionOpen(!revisionOpen); }}>{revisionOpen ? "Close changes" : "Suggest changed terms"}</button>
               {revisionOpen && <div className="proposal-revision"><p>Updating any term clears prior confirmations. Every participant will review the full route again.</p>{revisionLegs.map((l) => <div className="review-leg" key={l.id}><strong>{name(l.provider)} gives {l.skill} to {name(l.receiver)}</strong><div className="review-fields"><label>Sessions<input type="number" min="1" max={state.listings.find((x) => x.id === l.need)?.sessions || l.sessions} value={l.sessions} onChange={(ev) => revise(l.id, "sessions", Number(ev.target.value))} /></label><label>Minutes<input type="number" min="15" max="180" step="15" value={l.duration} onChange={(ev) => revise(l.id, "duration", Number(ev.target.value))} /></label><label>Mode<select value={l.mode} onChange={(ev) => revise(l.id, "mode", ev.target.value)}><option>Online</option><option>Offline</option></select></label><label>Location<input value={l.location} onChange={(ev) => revise(l.id, "location", ev.target.value)} /></label><label>Availability<input value={l.availability} onChange={(ev) => revise(l.id, "availability", ev.target.value)} /></label></div></div>)}<button className="button primary" onClick={() => { if (act({ type: "reviseProposal", exchange: e.id, user, legs: revisionLegs })) setRevisionOpen(false); }}>Send changed proposal</button></div>}
               <p>
-                Demo: each button simulates that participant’s explicit
-                acceptance of the complete route and any quantity imbalance.
+                {dataMode === "live"
+                  ? "Each participant confirms from their own account."
+                  : "Demo: each button simulates that participant’s explicit acceptance of the complete route and any quantity imbalance."}
               </p>
               {participants(e).map((p) => (
                 <div className="confirmation-row" key={p}>
@@ -1678,14 +1810,16 @@ function ExchangeDetails({
                   <strong>{people[p].name}</strong>
                   <button
                     className={`button ${e.confirmations.includes(p) ? "" : "primary"}`}
-                    disabled={e.confirmations.includes(p)}
+                    disabled={e.confirmations.includes(p) || (dataMode === "live" && p !== user)}
                     onClick={() =>
-                      act({ type: "confirm", exchange: e.id, user: p })
+                      act({ type: "confirm", exchange: e.id, user: dataMode === "live" ? user : p })
                     }
                   >
                     {e.confirmations.includes(p)
                       ? "Confirmed"
-                      : `Confirm as ${name(p)}`}
+                      : dataMode === "live" && p !== user
+                        ? `Waiting for ${name(p)}`
+                        : `Confirm as ${name(p)}`}
                   </button>
                 </div>
               ))}
@@ -1801,7 +1935,7 @@ function ExchangeDetails({
                         {d.status} dispute · {name(d.raised_by)}
                       </strong>
                       <p>{d.reason}</p>
-                      {d.status === "Open" ? (
+                      {d.status === "Open" && dataMode === "live" ? <p>This exchange is on hold pending moderator review.</p> : d.status === "Open" ? (
                         <>
                           <p>
                             Simulated administration: choose a recorded
@@ -2046,6 +2180,7 @@ function ExchangeDetails({
                 </p>
                 <button
                   className="button danger"
+                  disabled={dataMode === "live"}
                   onClick={() => act({ type: "default", exchange: e.id })}
                 >
                   Simulate deadline · No replacement
@@ -2149,6 +2284,6 @@ function EvaluationForm({
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <AuthGate>{(account, logout) => <App account={account} onLogout={logout} />}</AuthGate>
+    <AuthGate>{(account, logout) => <App key={account.userId} account={account} onLogout={logout} />}</AuthGate>
   </React.StrictMode>,
 );

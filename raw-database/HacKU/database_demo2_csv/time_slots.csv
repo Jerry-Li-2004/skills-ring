@@ -1,0 +1,10 @@
+slot_id,slot_name,sort_order
+1,Weekday Morning,1
+2,Weekday Afternoon,2
+3,Weekday Evening,3
+4,Saturday Morning,4
+5,Saturday Afternoon,5
+6,Saturday Evening,6
+7,Sunday Morning,7
+8,Sunday Afternoon,8
+9,Sunday Evening,9

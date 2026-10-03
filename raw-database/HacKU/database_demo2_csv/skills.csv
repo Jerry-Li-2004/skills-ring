@@ -1,0 +1,51 @@
+skill_id,category_id,skill_name,description,status,created_at
+s1,c1,Python,,Active,2026-10-02 14:03:34
+s10,c7,Tennis,,Active,2026-10-02 14:03:34
+s11,c8,Bicycle Repair,,Active,2026-10-02 14:33:12
+s12,c8,Meal Prep,,Active,2026-10-02 14:33:12
+s13,c4,Presentation Design,,Active,2026-10-02 14:33:12
+s14,c4,Personal Budgeting,,Active,2026-10-02 14:33:12
+s15,c3,Phone Photography,,Active,2026-10-02 14:33:12
+s16,c7,Fitness Basics,,Active,2026-10-02 14:33:12
+s17,c3,Guitar Chords,,Active,2026-10-02 14:33:12
+s18,c5,Interview Practice,,Active,2026-10-02 14:33:12
+s19,c8,Laundry Care,,Active,2026-10-02 14:33:12
+s2,c2,Cantonese,,Active,2026-10-02 14:03:34
+s20,c8,Campus Navigation,,Active,2026-10-02 14:33:12
+s21,c3,Piano Basics,,Active,2026-10-02 15:59:05
+s22,c3,Poster Design,,Active,2026-10-02 15:59:05
+s23,c8,Moving Help,,Active,2026-10-02 15:59:05
+s24,c8,Cooking Basics,,Active,2026-10-02 15:59:05
+s25,c3,Origami,,Active,2026-10-03 00:00:00
+s26,c8,Room Organization,,Active,2026-10-03 00:00:00
+s27,c5,Short Speech Practice,,Active,2026-10-03 00:00:00
+s28,c1,JavaScript Debugging,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s29,c1,Web Page Basics,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s3,c3,Photography,,Active,2026-10-02 14:03:34
+s30,c1,SQL Basics,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s31,c2,Korean Conversation,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s32,c2,Japanese Conversation,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s33,c2,English Proofreading,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s34,c3,Digital Illustration,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s35,c3,Video Editing,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s36,c3,Watercolor,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s37,c4,Notion Setup,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s38,c4,Time Planning,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s39,c4,Slide Design,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s4,c4,Excel,,Active,2026-10-02 14:03:34
+s40,c5,Mock Interview,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s41,c5,LinkedIn Profile Review,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s42,c5,Public Speaking,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s43,c6,Statistics Tutoring,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s44,c6,Calculus Tutoring,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s45,c6,Research Paper Reading,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s46,c7,Badminton,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s47,c7,Running Buddy,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s48,c8,Grocery Planning,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s49,c8,Plant Care,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s5,c3,Guitar,,Active,2026-10-02 14:03:34
+s50,c8,Basic Sewing,Synthetic student skill for matching tests,Active,2026-10-02 16:55:15
+s6,c2,English,,Active,2026-10-02 14:03:34
+s7,c5,CV Review,,Active,2026-10-02 14:03:34
+s8,c2,Mandarin,,Active,2026-10-02 14:03:34
+s9,c6,Assignment Writing,,Disabled,2026-10-02 14:03:34

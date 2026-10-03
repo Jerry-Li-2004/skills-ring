@@ -2,5 +2,56 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "rewrites": [{ "source": "/((?!assets/).*)", "destination": "/index.html" }]
+  "regions": [
+    "sin1"
+  ],
+  "functions": {
+    "api/index.mjs": {
+      "maxDuration": 300,
+      "includeFiles": "server/generated/**"
+    },
+    "api/recommend.py": {
+      "maxDuration": 300,
+      "excludeFiles": "{node_modules,dist,.git,deliverables,skills,raw-database/HacKU}/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/((?!recommend(?:/|$)).*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/((?!api/|assets/|images/).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
+      ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/recommend",
+      "schedule": "0 19 * * *"
+    }
+  ]
 }

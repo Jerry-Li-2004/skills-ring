@@ -1,0 +1,11 @@
+.env*
+!.env.example
+.local
+raw-database/HacKU
+raw-database/result_outputs
+raw-database/**/__pycache__
+deliverables
+skills
+supabase/seed.sql
+**/*.test.*
+raw-database/tests

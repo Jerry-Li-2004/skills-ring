@@ -1,0 +1,9 @@
+config_key,config_value,description,updated_at
+algorithm_input_version,2,Curated input-only data for algorithm handoff,2026-10-02 16:33:22
+location_weight,0.05,Location has low recommendation weight,2026-10-02 14:03:34
+max_active_commitments,1,Maximum open commitments per user in this demo,2026-10-02 14:03:34
+max_cycle_size,3,Allow direct matches and three-person cycles,2026-10-02 16:33:22
+max_recommendations,20,Maximum ranked recommendations returned,2026-10-02 16:33:22
+new_user_boost,0,No new-user reliability or ranking boost,2026-10-02 16:33:22
+reliability_cold_start,50,Use 50 when no reliability history exists,2026-10-02 16:33:22
+value_balance_hard_filter,0,Value imbalance affects ranking only,2026-10-02 16:33:22

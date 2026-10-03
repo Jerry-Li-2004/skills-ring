@@ -1,4 +1,4 @@
-# Template photograph sources
+# Stock photograph sources
 
 These are illustrative skill covers, not photographs of members or their actual sessions. Downloaded from Unsplash and stored locally as WebP for reliable demos and deployment.
 
@@ -12,4 +12,4 @@ These are illustrative skill covers, not photographs of members or their actual 
 
 [Unsplash License](https://unsplash.com/license)
 
-Template selection lives in `src/SkillCover.tsx`. Replace a file with a new image of the same name to update its template.
+Photo selection lives in `src/SkillCover.tsx`. Photos are imported through Vite so deployment includes versioned image assets.
