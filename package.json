@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "dev:api": "node server/server.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "vitest run"
+    "start": "node server/server.mjs",
+    "test": "vitest run src",
+    "test:auth": "node --test server/app.test.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -23,6 +26,6 @@
     "vitest": "^4.1.11"
   },
   "engines": {
-    "node": "22.x"
+    "node": "^22.13.0 || ^24.0.0"
   }
 }
