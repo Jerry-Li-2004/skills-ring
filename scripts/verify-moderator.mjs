@@ -1,0 +1,11 @@
+import { readFile } from "node:fs/promises";
+const profile = JSON.parse(await readFile(new URL("../.local/moderator-profile.json", import.meta.url), "utf8"));
+const origin = process.argv[2] || "http://127.0.0.1:3001";
+const headers = { Authorization: `Bearer ${profile.token}` };
+const me = await fetch(`${origin}/api/auth/me`, { headers });
+const account = await me.json();
+if (!me.ok || account.user?.moderator !== true) throw new Error("Moderator is not enabled.");
+const result = await fetch(`${origin}/api/moderation`, { headers });
+const queue = await result.json();
+if (!result.ok) throw new Error(queue.error || "Could not read the moderation queue.");
+console.log(JSON.stringify({ userId: account.user.userId, moderator: account.user.moderator, queueAccessible: true, openCases: queue.disputes.filter(d => d.status === "Open").length, resolvedCases: queue.disputes.filter(d => d.status === "Resolved").length }));

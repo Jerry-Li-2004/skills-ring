@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.tsbuildinfo
 .env*
+.local/
 !.env.example
 !.env.production
 .DS_Store

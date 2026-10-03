@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { bondQuote, exchangeBonds, findMatches, transition } from "./domain";
-import { liveSnapshotToState, type LiveSnapshot } from "./live-snapshot";
+import { liveSkillCatalog, liveSnapshotToState, type LiveSnapshot } from "./live-snapshot";
 
 describe("live recommendation snapshot", () => {
+  it("uses active Supabase categories and skills, including skills without listings", () => {
+    expect(liveSkillCatalog({ categories: [
+      { category_id: "creative", category_name: "Creative", status: "Active" },
+      { category_id: "old", category_name: "Old", status: "Disabled" },
+    ], skills: [
+      { category_id: "creative", skill_name: "Guitar", status: "Active" },
+      { category_id: "creative", skill_name: "Retired", status: "Disabled" },
+      { category_id: "old", skill_name: "Old skill", status: "Active" },
+    ] })).toEqual({ Creative: ["Guitar"] });
+  });
   it("uses only Supabase ranked matches and rotates the route to the target user", () => {
     const snapshot: LiveSnapshot = {
       source: "supabase", fetchedAt: new Date().toISOString(), liveUserId: "u1",
@@ -46,5 +56,14 @@ describe("live recommendation snapshot", () => {
     const unranked = liveSnapshotToState(snapshot);
     expect(findMatches(unranked, "u1")).toEqual([]);
     expect(() => transition(unranked, { type: "propose", legs: route })).toThrow("no longer available");
+    snapshot.exchange_legs = route.map((leg, index) => ({ leg_id: leg.id, exchange_id: "ended", provider_id: leg.provider, receiver_id: leg.receiver, offer_id: leg.offer, need_id: leg.need, skill_id: index ? "s2" : "s1", duration_minutes: leg.duration, total_sessions: leg.sessions }));
+    for (const outcome of ["declined", "cancelled", "expired"]) {
+      snapshot.exchanges = [{ exchange_id: "ended", status: "Withdrawn", details: { proposalOutcome: outcome } }];
+      expect(liveSnapshotToState(snapshot).exchanges[0].status).toBe(outcome);
+    }
+    snapshot.exchanges = [{ exchange_id: "ended", status: "Withdrawn", details: { declineReason: "Cancelled by proposer" } }];
+    expect(liveSnapshotToState(snapshot).exchanges[0].status).toBe("cancelled");
+    snapshot.exchanges = [{ exchange_id: "ended", status: "Withdrawn", details: { recovery: { withdrawn: "u1", confirmations: [], applied: false } } }];
+    expect(liveSnapshotToState(snapshot).exchanges[0].status).toBe("withdrawn");
   });
 });

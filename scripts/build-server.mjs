@@ -2,7 +2,7 @@ import ts from "typescript";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 mkdirSync("server/generated", { recursive: true });
-for (const name of ["domain", "live-snapshot", "starter"]) {
+for (const name of ["domain", "live-snapshot", "starter", "calendar"]) {
   const source = readFileSync(`src/${name}.ts`, "utf8");
   const { outputText } = ts.transpileModule(source, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },

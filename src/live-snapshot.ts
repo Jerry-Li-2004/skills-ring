@@ -1,5 +1,5 @@
 import { mergeStarterWorkspace, type StarterWorkspace } from "./starter";
-import { library, registerPerson, type Exchange, type Leg, type Listing, type Person, type State } from "./domain";
+import { library, registerPerson, proposalStatus, type Exchange, type Leg, type Listing, type Person, type State } from "./domain";
 
 type LiveRow = Record<string, unknown>;
 export type LiveSnapshot = {
@@ -51,6 +51,16 @@ function listingStatus(value: string): Listing["status"] {
 
 function levelIndex(value: string) {
   return Math.max(0, ["Beginner", "Intermediate", "Advanced", "Expert"].indexOf(value));
+}
+
+export function liveSkillCatalog(snapshot: Pick<LiveSnapshot, "categories" | "skills">): Record<string, string[]> {
+  const catalog: Record<string, string[]> = {};
+  for (const category of snapshot.categories.filter(row => row.status === "Active")) {
+    const names = snapshot.skills.filter(row => row.status === "Active" && row.category_id === category.category_id)
+      .map(row => text(row, "skill_name")).filter(Boolean);
+    if (names.length) catalog[text(category, "category_name")] = [...new Set(names)];
+  }
+  return catalog;
 }
 
 export function liveSnapshotToState(snapshot: LiveSnapshot): State {
@@ -254,7 +264,7 @@ export function liveSnapshotToState(snapshot: LiveSnapshot): State {
       title: text(exchangeDetails, "title", legs.map((leg) => leg.skill).join(" & ")),
       legs,
       confirmations: confirmationsByExchange.get(exchangeId) || [],
-      status: status(text(row, "status")),
+      status: (text(row, "status") === "Withdrawn" && ["declined", "cancelled", "expired"].includes(text(exchangeDetails, "proposalOutcome"))) ? text(exchangeDetails, "proposalOutcome") as Exchange["status"] : status(text(row, "status")),
       audit: Array.isArray(exchangeDetails.audit) ? exchangeDetails.audit.filter((item): item is string => typeof item === "string") : [],
       amendments: Array.isArray(exchangeDetails.amendments) ? exchangeDetails.amendments as Exchange["amendments"] : [],
       ...(typeof exchangeDetails.createdAt === "string" ? { createdAt: exchangeDetails.createdAt } : {}),
@@ -264,6 +274,7 @@ export function liveSnapshotToState(snapshot: LiveSnapshot): State {
       ...(exchangeDetails.recovery && typeof exchangeDetails.recovery === "object" ? { recovery: exchangeDetails.recovery as Exchange["recovery"] } : {}),
     }];
   });
+  for (const exchange of exchanges) exchange.status = proposalStatus(exchange);
   const exchangeMap = new Map(exchanges.map((exchange) => [exchange.id, exchange]));
   const legBySession = new Map<string, LiveRow>();
   const sessions = (snapshot.sessions || []).flatMap((row) => {
@@ -323,6 +334,7 @@ export function liveSnapshotToState(snapshot: LiveSnapshot): State {
     return Array.isArray(value) ? value : [];
   });
   return mergeStarterWorkspace({
+    liveCatalog: liveSkillCatalog(snapshot),
     version: 1,
     listings: [
       ...snapshot.offers.filter((row) => text(row, "status") !== "Deleted").map((row) => makeListing(row, "offer")),
@@ -346,4 +358,3 @@ export function liveSnapshotToState(snapshot: LiveSnapshot): State {
     completionBondRate: config.get("completion_bond_rate") || 0.2,
   }, snapshot.starter, snapshot.liveUserId);
 }
-

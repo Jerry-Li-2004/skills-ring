@@ -45,7 +45,7 @@ test("complete registration opens the API without passwords or confirmation and 
   const headers = { authorization: `Bearer ${token}` };
   const me = await fetch(`${base}/api/auth/me`, { headers });
   assert.equal(me.status, 200);
-  assert.deepEqual((await me.json()).user, user);
+  assert.deepEqual((await me.json()).user, { ...user, moderator: false });
   assert.deepEqual(await createRegistration(config).authenticate({ headers }), user);
   assert.equal(await registration.authenticate({ headers: {} }), null);
   assert.equal(await registration.authenticate({ headers: { authorization: `Bearer ${token}x` } }), null);

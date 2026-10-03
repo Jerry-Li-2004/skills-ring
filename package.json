@@ -5,14 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "dev:api": "npm run build:server && node --env-file-if-exists=.env.production --env-file-if-exists=.env.local server/server.mjs",
+    "dev:api": "npm run build:server && node --env-file-if-exists=.env.production --env-file-if-exists=.env.local --env-file-if-exists=.env.moderators.local server/server.mjs",
     "build": "tsc -b && node scripts/build-server.mjs && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "start": "npm run build:server && node --env-file-if-exists=.env.production --env-file-if-exists=.env.local server/server.mjs",
+    "start": "npm run build:server && node --env-file-if-exists=.env.production --env-file-if-exists=.env.local --env-file-if-exists=.env.moderators.local server/server.mjs",
     "test": "vitest run src",
     "test:auth": "node --test server/app.test.mjs",
     "build:server": "node scripts/build-server.mjs",
-    "test:production": "npm run build:server && node --test server/production.test.mjs server/registration.test.mjs server/starter-store.test.mjs",
+    "test:production": "npm run build:server && node --test server/production.test.mjs server/registration.test.mjs server/starter-store.test.mjs server/moderation.test.mjs",
     "test:python": "cd raw-database && python3 -m unittest discover -s tests"
   },
   "dependencies": {

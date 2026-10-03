@@ -1,4 +1,4 @@
-import { seed, people, registerPerson, findMatches, type State } from "./domain";
+import { seed, people, registerPerson, findMatches, proposalStatus, type State } from "./domain";
 
 export type StarterWorkspace = { ownerId: string; people: Record<string, string>; state: State };
 
@@ -40,6 +40,7 @@ export function mergeStarterWorkspace(live: State, starter: StarterWorkspace | u
   if (!starter || starter.ownerId !== userId) return live;
   for (const [id, displayName] of Object.entries(starter.people)) registerPerson(id, displayName);
   const sample = starter.state;
+  for (const exchange of sample.exchanges) exchange.status = proposalStatus(exchange);
   const merged = { ...live, starterAvailable: true };
   for (const field of ["listings", "exchanges", "sessions", "contributions", "bonds", "bondLedger", "disputes", "evaluations", "withdrawals", "messages", "bookings", "notifications"] as const) {
     // Every field is a homogeneous array; the runtime key preserves its type.

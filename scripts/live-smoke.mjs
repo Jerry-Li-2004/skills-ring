@@ -20,7 +20,7 @@ async function api(path, account, body) {
   return { status: response.status, data };
 }
 try {
-  assert.equal((await api("/api/health")).data.auth, "supabase");
+  assert.ok(["registration", "supabase"].includes((await api("/api/health")).data.auth));
   assert.equal((await api("/api/live/snapshot")).status, 401);
   for (let i = 0; i < 2; i++) {
     const email = `deployment-${tag}-${i}@example.invalid`;
