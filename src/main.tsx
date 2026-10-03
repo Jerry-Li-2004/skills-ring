@@ -52,6 +52,7 @@ import {
   library,
   slots,
   findMatches,
+  availableListing,
   participants,
   imbalance,
   remaining,
@@ -67,6 +68,9 @@ import "./styles.css";
 import "./theme.css";
 import { SkillCover } from "./SkillCover";
 import { AuthGate, type Account } from "./auth";
+import { EntryIntro } from "./EntryIntro";
+import { Discovery, trackDiscoveryEvent } from "./Discovery";
+import { Coordination } from "./Coordination";
 import {
   SkillOrbit,
   AnimatedValue,
@@ -161,10 +165,13 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
     [menu, setMenu] = useState(false),
     [toast, setToast] = useState(""),
     [storageError, setStorageError] = useState(false);
+  const [initialReviewKey, setInitialReviewKey] = useState<string | null>(null);
+  const [discoveryEpoch, setDiscoveryEpoch] = useState(0);
   const [modal, setModal] = useState<
       "listing" | "help" | "demo" | "notifications" | null
     >(null),
     [selected, setSelected] = useState<string | null>(null),
+    [editingListing, setEditingListing] = useState<Listing | null>(null),
     [listingKind, setListingKind] = useState<"offer" | "need">("offer");
   useEffect(() => {
     try {
@@ -175,12 +182,23 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
     }
   }, [state]);
   useEffect(() => {
+    const checkTimedEvents = () => setState((current) => {
+      const proposal = current.exchanges.find((e) => e.status === "proposed" && e.expiresAt && Date.parse(e.expiresAt) <= Date.now());
+      if (proposal) return transition(current, { type: "expireProposal", exchange: proposal.id });
+      const booking = current.bookings?.find((b) => b.status === "accepted" && !b.reminded && Date.parse(b.start) > Date.now() && Date.parse(b.start) - Date.now() <= 86400000);
+      return booking ? transition(current, { type: "remindBooking", exchange: booking.exchange, booking: booking.id }) : current;
+    });
+    checkTimedEvents();
+    const timer = window.setInterval(checkTimedEvents, 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(""), 5500);
       return () => clearTimeout(timer);
     }
   }, [toast]);
-  function act(action: Action) {
+  function act(action: Action): boolean {
     try {
       const next = transition(state, action);
       setState(next);
@@ -193,11 +211,15 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
         );
       } else if (action.type === "confirm") {
         setToast("Agreement recorded. One step closer to your exchange.");
+        const confirmed = next.exchanges.find((e) => e.id === action.exchange);
+        if (confirmed?.status === "confirmed") trackDiscoveryEvent("accepted_exchange", confirmed.legs.map((l) => l.id).join("|"), action.user);
       } else if (action.type === "evaluate") {
         setToast("Feedback saved. A little trust goes a long way.");
       }
+      return true;
     } catch (e) {
       setToast((e as Error).message);
+      return false;
     }
   }
   function go(next: string) {
@@ -217,26 +239,27 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
     ),
     owed = outstanding(state, user),
     myListings = state.listings.filter((l) => l.user === user);
-  const matches = findMatches(state, user),
-    filteredMatches = matches.filter((legs) =>
-      legs.some((l) =>
-        `${l.skill} ${people[l.provider].name}`
-          .toLowerCase()
-          .includes(query.toLowerCase()),
-      ),
-    );
+  const matches = findMatches(state, user);
   const selectedExchange = state.exchanges.find((e) => e.id === selected);
   const add = (kind: "offer" | "need") => {
+    setEditingListing(null);
     setListingKind(kind);
     setModal("listing");
   };
-  function propose(legs: Leg[]) {
+  const edit = (listing: Listing) => {
+    setEditingListing(listing);
+    setListingKind(listing.kind);
+    setModal("listing");
+  };
+  function propose(legs: Leg[]): boolean {
     try {
       const next = transition(state, { type: "propose", legs });
       setState(next);
       setSelected(next.exchanges.at(-1)!.id);
+      return true;
     } catch (e) {
       setToast((e as Error).message);
+      return false;
     }
   }
   const openMatches = () => go("Discover matches");
@@ -296,7 +319,7 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
             onClick={() => setModal("notifications")}
           >
             <Bell size={19} />
-            {active.length > 0 && <i />}
+            {(state.notifications || []).some((n) => n.user === user && !n.read) && <i />}
           </button>
           <span className="top-divider" />
           <details className="account-menu">
@@ -465,12 +488,12 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
                       </button>
                     </div>
                     <div className="match-grid">
-                      {matches.slice(0, 2).map((legs, i) => (
+                      {matches.slice(0, 2).map((legs) => (
                         <MatchCard
-                          key={i}
+                          key={legs.map((l) => l.id).join("|")}
                           legs={legs}
                           user={user}
-                          onClick={() => propose(legs)}
+                          onClick={() => { setInitialReviewKey(legs.map((l) => l.id).join("|")); go("Discover matches"); }}
                         />
                       ))}
                       {!matches.length && (
@@ -564,7 +587,7 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
             </>
           ) : (
             <>
-              <div className="page-heading">
+              {page !== "Discover matches" && <div className="page-heading">
                 <div>
                   <h1>{page}</h1>
                   <p>
@@ -591,19 +614,9 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
                 <button className="button primary" onClick={() => add("offer")}>
                   <Plus size={17} /> Add an offer or need
                 </button>
-              </div>
+              </div>}
               {page === "Discover matches" && (
                 <>
-                  <div className="filter-bar">
-                    <Search size={18} />
-                    <input
-                      aria-label="Filter matches"
-                      placeholder="Search by skill or member"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                    />
-                    <Badge>{filteredMatches.length} compatible routes</Badge>
-                  </div>
                   {recommendations(state, user)
                     .filter((r) => r.priority < 3)
                     .map((r, i) => (
@@ -622,24 +635,7 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
                         <ChevronRight size={20} />
                       </button>
                     ))}
-                  <div className="match-grid discovery">
-                    {filteredMatches.map((legs, i) => (
-                      <MatchCard
-                        key={i}
-                        legs={legs}
-                        user={user}
-                        onClick={() => propose(legs)}
-                      />
-                    ))}
-                  </div>
-                  {!filteredMatches.length && (
-                    <Empty
-                      title="No compatible route yet"
-                      text="Try another search or add a different offer or need. A small network may not contain a feasible exchange."
-                      action="Add an offer or need"
-                      onClick={() => add("offer")}
-                    />
-                  )}
+                  <Discovery key={discoveryEpoch} state={state} user={user} matches={matches} query={query} initialReviewKey={initialReviewKey} onInitialReviewOpened={() => setInitialReviewKey(null)} onPropose={propose} onEditListings={() => go("My offers & needs")} />
                 </>
               )}
               {page === "My exchanges" && (
@@ -708,14 +704,19 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
                               {l.location} · {l.availability.join(", ")}
                             </p>
                             {l.conditions && <p>Condition: {l.conditions}</p>}
-                            <button
-                              className="text-link"
-                              onClick={() => act({ type: "pause", id: l.id })}
-                            >
-                              {l.status === "Active"
-                                ? "Pause listing"
-                                : "Resume listing"}
-                            </button>
+                            <p className="muted">{matches.filter((route) => route.some((leg) => leg.offer === l.id || leg.need === l.id)).length} available matches · {l.status !== "Active" ? "Reactivate this listing to appear in discovery." : availableListing(state, l).sessions === 0 ? "All sessions are reserved by existing exchanges." : !state.listings.some((other) => other.user !== user && other.kind !== l.kind && other.skill === l.skill && other.status === "Active") ? "No active counterpart lists this skill yet." : "A reciprocal route is missing, or session terms, mode, location or availability do not align."}</p>
+                            <div className="button-row listing-actions">
+                              <button className="text-link" onClick={() => edit(l)}>Edit</button>
+                              <button className="text-link" onClick={() => { act({ type: "duplicateListing", id: l.id }); setToast("Draft copy created. Review and activate it when ready."); }}>Duplicate</button>
+                              <button className="text-link" onClick={() => {
+                                const inUse = state.exchanges.some((e) => !["settled", "withdrawn", "defaulted"].includes(e.status) && e.legs.some((leg) => leg.offer === l.id || leg.need === l.id));
+                                if (inUse && !window.confirm("This listing supports an active proposal or exchange. Pause it for new matches?")) return;
+                                act({ type: "setListingStatus", id: l.id, status: l.status === "Active" ? "Paused" : "Active" });
+                              }}>{l.status === "Active" ? "Pause" : "Resume"}</button>
+                              <button className="text-link" onClick={() => act({ type: "setListingStatus", id: l.id, status: "Fulfilled" })}>Mark fulfilled</button>
+                              <button className="text-link" onClick={() => act({ type: "setListingStatus", id: l.id, status: "Archived" })}>Archive</button>
+                              <button className="text-link" onClick={() => { const inUse = state.exchanges.some((e) => !["settled", "withdrawn", "defaulted"].includes(e.status) && e.legs.some((leg) => leg.offer === l.id || leg.need === l.id)); if (inUse) { setToast("This listing supports an active proposal or exchange. Archive it when the exchange is finished."); return; } if (window.confirm("Delete this listing? This cannot be undone.")) act({ type: "setListingStatus", id: l.id, status: "Deleted" }); }}>Delete</button>
+                            </div>
                           </div>
                         ))}
                     </section>
@@ -901,17 +902,19 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
       )}
       {modal === "listing" && (
         <Modal
-          title="Make a new connection possible"
+          title={editingListing ? "Edit your listing" : "Make a new connection possible"}
           onClose={() => setModal(null)}
         >
           <ListingForm
+            key={editingListing?.id || `new-${listingKind}`}
             kind={listingKind}
             user={user}
+            initial={editingListing}
             onSave={(l) => {
-              act({ type: "listing", listing: l });
+              if (!act(editingListing ? { type: "editListing", listing: l } : { type: "listing", listing: l })) return;
               setModal(null);
               setToast(
-                "Your listing is live. Compatible matches have been refreshed.",
+                l.skill === "Other" && !l.otherApproved ? "Your skill suggestion is waiting in Demo Studio review before it can match." : "Your listing was saved. Compatible matches have been refreshed.",
               );
             }}
           />
@@ -1024,6 +1027,8 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
                 key={s.key}
                 className="scenario"
                 onClick={() => {
+                  try { for (const key of Object.keys(localStorage)) if (key.startsWith("skills-ring-discovery-v1-")) localStorage.removeItem(key); } catch { /* Demo still runs when storage is unavailable. */ }
+                  setDiscoveryEpoch((n) => n + 1);
                   setState(seed(s.key));
                   setUser("alice");
                   go(s.key === "home" ? "Home" : "Discover matches");
@@ -1043,26 +1048,26 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
               </button>
             ))}
           </div>
+          {state.listings.some((l) => l.status === "Pending review") && <section className="recovery-section"><h3>Demo skill review queue</h3><p>These fictional suggestions stay out of matching until reviewed. Production moderation requires P0 accounts and P2 moderator permissions.</p>{state.listings.filter((l) => l.status === "Pending review").map((l) => <div className="booking-card" key={l.id}><strong>{people[l.user].name}: {l.otherSkill}</strong><p>{l.kind} · {l.category}</p><div className="button-row"><button className="button" onClick={() => act({ type: "reviewListing", id: l.id, approved: true })}>Approve suggestion</button><button className="button" onClick={() => act({ type: "reviewListing", id: l.id, approved: false })}>Reject suggestion</button></div></div>)}</section>}
         </Modal>
       )}
       {modal === "notifications" && (
         <Modal title="Your updates" onClose={() => setModal(null)}>
-          {active.length ? (
-            active.map((e) => (
+          {(state.notifications || []).filter((n) => n.user === user).length ? (
+            (state.notifications || []).filter((n) => n.user === user).slice().reverse().map((n) => (
               <button
                 className="scenario"
-                key={e.id}
+                key={n.id}
                 onClick={() => {
+                  act({ type: "readNotifications", user });
                   setModal(null);
-                  setSelected(e.id);
+                  setSelected(n.exchange);
                 }}
               >
                 <ArrowLeftRight size={22} />
                 <span>
-                  <strong>{e.title}</strong>
-                  <small>
-                    {e.status} · Review the remaining services and next steps.
-                  </small>
+                  <strong>{n.read ? "" : "New · "}{n.text}</strong>
+                  <small>{new Date(n.createdAt).toLocaleString()}</small>
                 </span>
                 <ChevronRight size={18} />
               </button>
@@ -1070,7 +1075,7 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
           ) : (
             <Empty
               title="You’re up to date"
-              text="New exchange activity will appear here."
+              text="Proposal, message and session activity will appear here."
             />
           )}
         </Modal>
@@ -1187,6 +1192,7 @@ function MatchCard({
       <div className="match-reason">
         <Clock3 size={14} /> {get.availability}
       </div>
+      {legs.length > 2 && <div className="match-reason ring-summary">{legs.map((l) => `${name(l.provider)} gives ${l.skill} to ${name(l.receiver)}`).join(" · ")}</div>}
       {imbalance(legs) && (
         <div className="match-reason amber-text">
           <AlertTriangle size={14} /> Potential quantity imbalance
@@ -1355,14 +1361,17 @@ function Modal({
 function ListingForm({
   kind,
   user,
+  initial,
   onSave,
 }: {
   kind: Listing["kind"];
   user: Person;
+  initial?: Listing | null;
   onSave: (l: Listing) => void;
 }) {
   const [currentKind, setKind] = useState(kind),
-    [category, setCategory] = useState<keyof typeof library>("Programming");
+    [category, setCategory] = useState<keyof typeof library>(initial?.category || "Programming"),
+    [skill, setSkill] = useState(initial?.skill || library[initial?.category || "Programming"][0]);
   return (
     <form
       className="listing-form"
@@ -1370,11 +1379,12 @@ function ListingForm({
         e.preventDefault();
         const f = new FormData(e.currentTarget);
         onSave({
-          id: id(),
+          id: initial?.id || id(),
           user,
-          kind: currentKind,
+          kind: initial?.kind || currentKind,
           category,
-          skill: f.get("skill") as string,
+          skill,
+          otherSkill: skill === "Other" ? (f.get("otherSkill") as string).trim() : undefined,
           duration: Number(f.get("duration")),
           sessions: Number(f.get("sessions")),
           mode: f.get("mode") as Listing["mode"],
@@ -1382,11 +1392,13 @@ function ListingForm({
           availability: f.getAll("availability") as string[],
           level: Number(f.get("level")),
           conditions: (f.get("conditions") as string).trim(),
-          status: "Active",
+          dateFrom: (f.get("dateFrom") as string) || undefined,
+          dateTo: (f.get("dateTo") as string) || undefined,
+          status: initial?.status || "Active",
         });
       }}
     >
-      <div className="segmented">
+      {!initial && <div className="segmented">
         <button
           type="button"
           className={currentKind === "offer" ? "active" : ""}
@@ -1401,7 +1413,7 @@ function ListingForm({
         >
           <Compass size={17} /> What I need
         </button>
-      </div>
+      </div>}
       <p>
         Demo only · posting as fictional participant <strong>{people[user].name}</strong>.
         Each offer and need has its own preferences.
@@ -1411,9 +1423,7 @@ function ListingForm({
           Category
           <select
             value={category}
-            onChange={(e) =>
-              setCategory(e.target.value as keyof typeof library)
-            }
+            onChange={(e) => { const next = e.target.value as keyof typeof library; setCategory(next); setSkill(library[next][0]); }}
           >
             {Object.keys(library).map((c) => (
               <option key={c}>{c}</option>
@@ -1422,17 +1432,18 @@ function ListingForm({
         </label>
         <label>
           Skill
-          <select name="skill" key={category}>
+          <select name="skill" value={skill} onChange={(e) => setSkill(e.target.value)}>
             {library[category].map((s) => (
               <option key={s}>{s}</option>
             ))}
           </select>
         </label>
+        {skill === "Other" && <label>Specific skill suggestion<input name="otherSkill" list="skill-suggestions" defaultValue={initial?.otherSkill || ""} placeholder="Search or suggest a skill" required maxLength={80} /><datalist id="skill-suggestions"><option value="TypeScript" /><option value="Portrait photography" /><option value="Language exchange" /><option value="Yoga" /></datalist></label>}
         <label>
           Level
           <select
             name="level"
-            defaultValue={currentKind === "offer" ? "2" : "0"}
+            defaultValue={initial?.level ?? (currentKind === "offer" ? "2" : "0")}
           >
             <option value="0">Beginner</option>
             <option value="1">Intermediate</option>
@@ -1441,7 +1452,7 @@ function ListingForm({
         </label>
         <label>
           Length per session
-          <select name="duration" defaultValue="60">
+          <select name="duration" defaultValue={initial?.duration || 60}>
             {[30, 45, 60, 90, 120].map((n) => (
               <option key={n} value={n}>
                 {minutes(n)}
@@ -1456,13 +1467,13 @@ function ListingForm({
             name="sessions"
             min="1"
             max="10"
-            defaultValue="1"
+            defaultValue={initial?.sessions || 1}
             required
           />
         </label>
         <label>
           How we meet
-          <select name="mode">
+          <select name="mode" defaultValue={initial?.mode || "Online"}>
             <option>Online</option>
             <option>Offline</option>
             <option>Either</option>
@@ -1472,7 +1483,7 @@ function ListingForm({
           Location
           <input
             name="location"
-            defaultValue="Anywhere"
+            defaultValue={initial?.location || "Anywhere"}
             placeholder="City or agreed meeting place"
             maxLength={100}
             required
@@ -1480,12 +1491,15 @@ function ListingForm({
         </label>
         <label>
           Availability
-          <select name="availability" defaultValue="Saturday Afternoon">
+          <select name="availability" multiple size={5} defaultValue={initial?.availability || ["Saturday Afternoon"]}>
             {slots.map((s) => (
               <option key={s}>{s}</option>
             ))}
           </select>
+          <small>Choose one or more slots (hold Command or Control for multiple).</small>
         </label>
+        <label>From date <span className="muted">(optional)</span><input name="dateFrom" type="date" defaultValue={initial?.dateFrom || ""} /></label>
+        <label>Until date <span className="muted">(optional)</span><input name="dateTo" type="date" defaultValue={initial?.dateTo || ""} /></label>
       </div>
       <label>
         Conditions <span className="muted">(optional)</span>
@@ -1493,14 +1507,14 @@ function ListingForm({
           name="conditions"
           placeholder="For example: Bring your own racket"
           maxLength={180}
+          defaultValue={initial?.conditions || ""}
         />
       </label>
       <small className="muted">
-        Conditions must match exactly for automatic matching. Use Other with a
-        specific condition to describe an unlisted skill.
+        Conditions must match exactly for automatic matching. Other skills match only when both suggestions use the same name. Suggestions enter the Demo Studio review queue before matching.
       </small>
       <button className="button primary full-width" type="submit">
-        Publish {currentKind}
+        {initial ? "Save changes" : `Publish ${currentKind}`}
       </button>
     </form>
   );
@@ -1514,13 +1528,17 @@ function ExchangeDetails({
   e: Exchange;
   state: State;
   user: Person;
-  act: (a: Action) => void;
+  act: (a: Action) => boolean;
 }) {
   const [tab, setTab] = useState("Overview"),
     [reason, setReason] = useState(""),
     [amendCount, setAmendCount] = useState("1"),
     [amendLeg, setAmendLeg] = useState(e.legs[0].id),
-    [disputeReason, setDisputeReason] = useState("");
+    [disputeReason, setDisputeReason] = useState(""),
+    [declineReason, setDeclineReason] = useState(""),
+    [revisionOpen, setRevisionOpen] = useState(false),
+    [revisionLegs, setRevisionLegs] = useState(e.legs.map((l) => ({ ...l })));
+  const revise = (legId: string, field: keyof Leg, value: string | number) => setRevisionLegs((legs) => legs.map((l) => l.id === legId ? { ...l, [field]: value } : l));
   const pending = e.amendments.find((a) => a.status === "pending");
   const sessions = state.sessions.filter((s) => s.exchange === e.id);
   const canComplete = ["confirmed", "active", "partially settled"].includes(
@@ -1541,7 +1559,7 @@ function ExchangeDetails({
       </div>
       <ExchangeJourney status={e.status} />
       <div className="tabs">
-        {["Overview", "Sessions & trust", "Changes & recovery", "Activity"].map(
+        {["Overview", "Conversation & schedule", "Sessions & trust", "Changes & recovery", "Activity"].map(
           (t) => (
             <button
               key={t}
@@ -1628,7 +1646,7 @@ function ExchangeDetails({
                 {canComplete && remaining(state, e, l) > 0 && (
                   <button
                     className="button full-width"
-                    disabled={!!pending}
+                    disabled={!!pending || !!state.bookings?.some((b) => b.exchange === e.id && b.leg === l.id && b.status === "accepted" && Date.parse(b.start) > Date.now())}
                     onClick={() =>
                       act({ type: "complete", exchange: e.id, leg: l.id })
                     }
@@ -1647,6 +1665,9 @@ function ExchangeDetails({
           {e.status === "proposed" && (
             <section className="confirmation-panel">
               <h3>Everyone agrees before anything begins</h3>
+              {e.expiresAt && <p>Proposal expires {new Date(e.expiresAt).toLocaleString()}.</p>}
+              <button className="button" onClick={() => { setRevisionLegs(e.legs.map((l) => ({ ...l }))); setRevisionOpen(!revisionOpen); }}>{revisionOpen ? "Close changes" : "Suggest changed terms"}</button>
+              {revisionOpen && <div className="proposal-revision"><p>Updating any term clears prior confirmations. Every participant will review the full route again.</p>{revisionLegs.map((l) => <div className="review-leg" key={l.id}><strong>{name(l.provider)} gives {l.skill} to {name(l.receiver)}</strong><div className="review-fields"><label>Sessions<input type="number" min="1" max={state.listings.find((x) => x.id === l.need)?.sessions || l.sessions} value={l.sessions} onChange={(ev) => revise(l.id, "sessions", Number(ev.target.value))} /></label><label>Minutes<input type="number" min="15" max="180" step="15" value={l.duration} onChange={(ev) => revise(l.id, "duration", Number(ev.target.value))} /></label><label>Mode<select value={l.mode} onChange={(ev) => revise(l.id, "mode", ev.target.value)}><option>Online</option><option>Offline</option></select></label><label>Location<input value={l.location} onChange={(ev) => revise(l.id, "location", ev.target.value)} /></label><label>Availability<input value={l.availability} onChange={(ev) => revise(l.id, "availability", ev.target.value)} /></label></div></div>)}<button className="button primary" onClick={() => { if (act({ type: "reviseProposal", exchange: e.id, user, legs: revisionLegs })) setRevisionOpen(false); }}>Send changed proposal</button></div>}
               <p>
                 Demo: each button simulates that participant’s explicit
                 acceptance of the complete route and any quantity imbalance.
@@ -1668,8 +1689,11 @@ function ExchangeDetails({
                   </button>
                 </div>
               ))}
+              <label>Reason to decline<input value={declineReason} onChange={(ev) => setDeclineReason(ev.target.value)} placeholder="What does not work for you?" /></label>
+              <div className="button-row"><button className="button" disabled={!declineReason.trim()} onClick={() => act({ type: "decline", exchange: e.id, user, reason: declineReason })}>Decline proposal</button><button className="button danger" onClick={() => act({ type: "cancelProposal", exchange: e.id, user })}>Cancel proposal</button></div>
             </section>
           )}
+          {e.declineReason && <p className="notice amber">Proposal ended: {e.declineReason}. You can discover a compatible route and propose again.</p>}
           {participants(e).map((p) =>
             outstanding(state, p).map((c) => (
               <div className="notice amber" key={c.id}>
@@ -1713,6 +1737,7 @@ function ExchangeDetails({
           </p>
         </>
       )}
+      {tab === "Conversation & schedule" && <Coordination e={e} state={state} user={user} act={act} />}
       {tab === "Sessions & trust" && (
         <>
           {!sessions.length && (

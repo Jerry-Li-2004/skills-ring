@@ -11,6 +11,8 @@
     if (document.querySelector('[aria-label="Close dialog"]')) await close();
     await click('Try a demo scenario');document.querySelectorAll('.scenario')[index].click();await pause();
     await click('Review match');
+    await click('Continue to confirmation');
+    await click('Send proposal to everyone');
   };
   const input = async (selector,value) => { const el=document.querySelector(selector);assert(el,selector);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));await pause(); };
   const results=[];

@@ -1,6 +1,6 @@
 # Skills Ring Product To Do List
 
-This backlog turns the current local demo into a trustworthy multi-user product. The first two priorities are account access and a Tinder-style discovery experience; the remaining work covers the largest product, trust, accessibility, and operational gaps found across the website.
+This backlog turns the current local demo into a trustworthy multi-user product. The first two priorities are account access and a guided discovery experience; the remaining work covers the largest product, trust, accessibility, and operational gaps found across the website.
 
 ## Priority guide
 
@@ -59,57 +59,59 @@ Acceptance criteria:
 
 ## P1 Core experience
 
-### Redesign Discover matches as a Tinder-style card experience
+**Local demo progress (October 2026):** Checked items below describe implemented behavior in the device-local fictional demo. P1 is not production complete while P0 account identity, shared persistence, authorization, and cross-device delivery remain open. In particular, notifications, analytics, skill review, conversations, and consent are simulated locally. The early-contact guard catches common details but does not replace moderation. Matching is synchronous in this demo; a loading fallback is ready for an asynchronous source.
 
-- [ ] Replace the dense discovery grid with one focused profile card at a time on narrow screens and an optional card stack on larger screens.
-- [ ] Show the member's avatar, name, short bio, skills offered, skills wanted, reliability summary, shared availability, mode, general location, and direct-versus-ring match type.
-- [ ] Make the exchange proposition explicit: **You give**, **You receive**, number and duration of sessions, and all participants in a multi-person ring.
-- [ ] Add visible **Pass**, **Save**, and **Review match** controls.
-- [ ] Add left/right swipe gestures as progressive enhancement; keep every action available through buttons and the keyboard.
-- [ ] Use a confirmation step before creating a proposal so an accidental swipe cannot commit the user.
-- [ ] Explain each recommendation with concrete reasons and surface quantity imbalance or risk before review.
-- [ ] Add Undo for the most recent pass and a Saved matches collection.
-- [ ] Prevent duplicate cards and remember seen, passed, saved, proposed, expired, and unavailable states.
-- [ ] Add filters for skill, category, online/offline, approximate location, availability, session length, direct/ring match, and reliability.
-- [ ] Add sort options for best fit, soonest availability, direct match, commitment priority, and newest.
-- [ ] Add a clear end-of-stack state with actions to broaden filters, edit offers or needs, and revisit saved matches.
-- [ ] Define empty, loading, stale-result, disconnected, and match-no-longer-available states.
-- [ ] Instrument impressions, profile expansion, pass, save, review, proposal, and accepted-exchange events.
+### Redesign Discover matches as a guided card experience
+
+- [x] Replace the dense discovery grid with one guided match at a time, side-by-side profile cards on wide screens, and a stacked flow on phones.
+- [x] Show the member's avatar, name, short bio, skills offered, skills wanted, reliability summary, shared availability, mode, general location, and direct-versus-ring match type.
+- [x] Make the exchange proposition explicit: **You give**, **You receive**, number and duration of sessions, and all participants in a multi-person ring.
+- [x] Add visible **Pass**, **Save**, and **Review match** controls.
+- [x] Add left/right swipe gestures as progressive enhancement; keep every action available through buttons and the keyboard.
+- [x] Use a confirmation step before creating a proposal so an accidental swipe cannot commit the user.
+- [x] Explain recommendation feasibility in Review match and surface quantity imbalance or risk on the match card before review.
+- [x] Add Undo for the most recent pass and a Saved matches collection.
+- [x] Prevent duplicate cards and remember seen, passed, saved, proposed, expired, and unavailable states.
+- [x] Add filters for skill, category, online/offline, approximate location, availability, session length, direct/ring match, and reliability.
+- [x] Add sort options for best fit, soonest availability, direct match, commitment priority, and newest.
+- [x] Add a clear end-of-stack state with actions to broaden filters, edit offers or needs, and revisit saved matches.
+- [x] Define empty, loading, stale-result, disconnected, and match-no-longer-available states.
+- [x] Instrument impressions, profile expansion, pass, save, review, proposal, and accepted-exchange events.
 
 Acceptance criteria:
 
-- [ ] A user can evaluate the essential exchange terms without opening another page.
-- [ ] Swipe, pointer, touch, keyboard, and screen-reader users can complete the same actions.
-- [ ] Passing never creates an exchange; Review match opens the full terms and confirmation flow.
-- [ ] A multi-person ring is understandable before the user proposes it.
+- [x] A user can evaluate the essential exchange terms without opening another page.
+- [x] Swipe, pointer, touch, keyboard, and screen-reader users can complete the same actions through gestures or labeled controls. Browser accessibility-tree and keyboard checks cover the local demo; full assistive-technology testing remains in P2.
+- [x] Passing never creates an exchange; Review match opens the full terms and confirmation flow.
+- [x] A multi-person ring is understandable before the user proposes it.
 
 ### Match detail and proposal flow
 
-- [ ] Add a full profile and match-detail view behind every discovery card.
-- [ ] Show why the match is feasible, which constraints align, and which constraints are flexible.
-- [ ] Visualize direct and multi-party routes with readable names, directions, and service terms.
-- [ ] Let users suggest changes to session count, duration, mode, location, or availability before proposing.
-- [ ] Show the effect of proposed changes on every participant and require renewed consent when terms change.
-- [ ] Add proposal expiry, decline reasons, cancellation, and re-proposal behavior.
-- [ ] Notify every affected participant when a proposal is created, changed, accepted, declined, or expires.
+- [x] Add a full profile and match-detail view behind every discovery card.
+- [x] Show why the match is feasible, which constraints align, and which constraints are flexible.
+- [x] Visualize direct and multi-party routes with readable names, directions, and service terms.
+- [x] Let users suggest changes to session count, duration, mode, location, or availability before proposing.
+- [x] Show the effect of proposed changes on every participant and require renewed consent when terms change.
+- [x] Add proposal expiry, decline reasons, cancellation, and re-proposal behavior.
+- [x] Notify every affected participant when a proposal is created, changed, accepted, declined, or expires.
 
 ### Offers and needs management
 
-- [ ] Add edit, duplicate, archive, delete, and mark-fulfilled actions; the current interface only pauses or resumes listings.
-- [ ] Support multiple availability slots and optional date ranges in the form.
-- [ ] Improve the **Other** skill path with a searchable suggestion and moderation workflow.
-- [ ] Show how many matches each listing can produce and why a listing has no matches.
-- [ ] Warn when pausing or deleting a listing would affect an active proposal.
-- [ ] Validate capacity against reserved and completed sessions.
+- [x] Add edit, duplicate, archive, delete, and mark-fulfilled actions; the current interface only pauses or resumes listings.
+- [x] Support multiple availability slots and optional date ranges in the form.
+- [x] Improve the **Other** skill path with a searchable suggestion and moderation workflow.
+- [x] Show how many matches each listing can produce and why a listing has no matches.
+- [x] Warn when pausing or deleting a listing would affect an active proposal.
+- [x] Validate capacity against reserved and completed sessions.
 
 ### Scheduling and communication
 
-- [ ] Add in-product conversation threads scoped to a proposal or exchange.
-- [ ] Protect users from sharing sensitive contact information too early.
-- [ ] Let participants propose, accept, reschedule, cancel, and complete exact session times with timezone handling.
-- [ ] Add calendar export and reminders; consider two-way calendar sync after the core flow is stable.
-- [ ] Add online meeting-link and safe public meeting-place fields.
-- [ ] Add no-show reporting and a grace-period policy.
+- [x] Add in-product conversation threads scoped to a proposal or exchange.
+- [x] Protect users from sharing sensitive contact information too early.
+- [x] Let participants propose, accept, reschedule, cancel, and complete exact session times with timezone handling.
+- [x] Add calendar export and reminders; consider two-way calendar sync after the core flow is stable.
+- [x] Add online meeting-link and safe public meeting-place fields.
+- [x] Add no-show reporting and a grace-period policy.
 
 ## P2 Trust, safety, and retention
 

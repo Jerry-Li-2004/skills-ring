@@ -44,11 +44,19 @@ The old `vercel.json` builds a static Vite site only; it cannot host this file-b
 - Binary behavioural evaluations and reliability derived from recorded feedback.
 - Glass-style navigation, an interactive Give / Learn / Connect hero, animated progress and statistics, and a settlement celebration.
 - Responsive navigation, keyboard-accessible dialogs and hero tabs, search, device-local persistence, and repeatable scenarios.
+- Guided discovery with side-by-side profile cards, clear teach/learn/meet steps, pass, undo, saved matches, pointer/touch/keyboard actions, filters, sorting, route explanations, and a separate full-term proposal review.
+- Proposal expiry, declined and cancelled proposals, revised terms with renewed consent, and local per-participant updates.
+- Listing edit, duplicate, pause, archive, fulfilment and guarded deletion; multi-slot and date-range availability; a simulated review queue for Other skill suggestions.
+- Exchange conversations, exact session-time proposals and acceptance, calendar export, local reminders, cancellation/rescheduling, and a 15-minute no-show reporting window.
 - Demo Studio in the top bar opens the repeatable stories. The motion toggle pauses decorative animation; system reduced-motion preferences are respected.
 
 ## Demo walkthroughs
 
 Use **Workspace settings** or **Try a demo scenario**. Loading a scenario replaces local demo data. Use the header participant selector to view any fictional participant’s ledger. Named confirmation buttons explicitly simulate the respective person’s agreement; these are not authenticated approvals.
+
+### P1 core experience
+
+Open **Discover matches** to view one route at a time. The profile cards and three numbered steps explain what you teach, what you learn, and when the exchange works. Pass or save with the visible buttons, or use left/right pointer and touch swipes and keyboard arrows. **Review match** shows all participants and service terms; you can suggest changes before a separate confirmation step sends a proposal. Proposal confirmations, declines, revisions, and notifications are simulated for each fictional participant. Open an exchange’s **Conversation & schedule** tab to send a local message, propose an exact time, switch fictional participants to accept it, and export an accepted time to a calendar. Accepted future bookings can be recorded as completed only after their start time. **My offers & needs** supports editing and availability ranges; Other skill suggestions wait in the Demo Studio’s simulated review queue.
 
 ### 1. Imbalance and partial settlement
 
@@ -76,7 +84,7 @@ In **Changes & recovery**, propose a new total session count within offer capaci
 - `src/experience.tsx`: interactive hero, motion preference, animated values, exchange journey, and settlement celebration.
 - `scripts/browser-smoke.js`: browser-side smoke test exercising visible controls; run with an already-open local app using `agent-browser eval --stdin < scripts/browser-smoke.js`. This deliberately resets the local demo workspace.
 - Storage key: `skills-ring-demo-v1`. State is local to one browser/device; there is no shared backend, authentication, real notification delivery, or independent service verification. The header selector and administrative decisions are explicitly simulated.
-- Conditions use conservative exact matching, and the form selects one coarse availability slot. The domain supports multiple slots. No calendar booking, chat, collateral, payment, or email integration is included.
+- Conditions use conservative exact matching. The form supports multiple coarse availability slots and optional date ranges. Session booking, messages, notifications, reminders, and discovery events are local demo records only; they are not delivered to other devices or participants. There is no collateral, payment, or email integration.
 - Contributions and session records preserve original claims. Dispute resolutions record separate recognized-duration adjustments. Remaining sessions and commitment/settlement state are derived, not editable balances. For the demo, each accepted service leg is treated as a concrete obligation, without tokens or prices.
 - The imbalance threshold is configurable through the domain helper (default 25% or different session counts). Participants’ consent is not a guarantee of substantive fairness.
 
