@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   seed,
   findMatches,
@@ -106,6 +106,77 @@ describe("matching and confirmation", () => {
     s = confirm(s);
     expect(s.exchanges[0].status).toBe("confirmed");
     expect(commitments(s).every((c) => c.status === "Proposed")).toBe(true);
+  });
+});
+
+describe("P1 exchange coordination", () => {
+  it("keeps pass outside domain state and requires explicit proposal and consent", () => {
+    const base = seed("direct");
+    expect(base.exchanges).toHaveLength(0);
+    const legs = findMatches(base, "alice")[0].map((l) => ({ ...l, duration: 45 }));
+    const proposed = transition(base, { type: "propose", legs });
+    expect(proposed.exchanges[0].status).toBe("proposed");
+    expect(proposed.exchanges[0].legs[0].duration).toBe(45);
+    expect(proposed.exchanges[0].expiresAt).toBeTruthy();
+    expect(proposed.notifications?.some((n) => n.user === "bob")).toBe(true);
+    expect(transition(proposed, { type: "confirm", exchange: proposed.exchanges[0].id, user: "alice" }).exchanges[0].status).toBe("proposed");
+  });
+  it("records messages and exact times for both participants", () => {
+    let s = confirm(flow());
+    const e = s.exchanges[0];
+    s = transition(s, { type: "message", exchange: e.id, user: "alice", text: "Saturday works" });
+    expect(s.messages?.[0].text).toBe("Saturday works");
+    s = transition(s, { type: "booking", exchange: e.id, leg: e.legs[0].id, user: "alice", start: new Date(Date.now() + 86400000).toISOString(), timezone: "Asia/Hong_Kong", place: "Video call" });
+    expect(s.bookings?.[0].status).toBe("proposed");
+    s = transition(s, { type: "acceptBooking", exchange: e.id, booking: s.bookings![0].id, user: "bob" });
+    expect(s.bookings?.[0].status).toBe("accepted");
+    expect(() => transition(s, { type: "complete", exchange: e.id, leg: e.legs[0].id, booking: s.bookings![0].id })).toThrow();
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(Date.parse(s.bookings![0].start) + 60000));
+      s = transition(s, { type: "complete", exchange: e.id, leg: e.legs[0].id, booking: s.bookings![0].id });
+    } finally { vi.useRealTimers(); }
+    expect(s.bookings?.[0].status).toBe("completed");
+    expect(s.sessions[0].scheduled_time).toBe(s.bookings![0].start);
+  });
+  it("blocks obvious contact details before all participants confirm", () => {
+    const s = flow();
+    const exchange = s.exchanges[0].id;
+    for (const text of ["me@example.com", "+852 9123 4567", "https://meeting.example.com", "12 Main Street"])
+      expect(() => transition(s, { type: "message", exchange, user: "alice", text })).toThrow(/contact details/);
+  });
+  it("guards reserved listings and supports decline with a reason", () => {
+    let s = flow();
+    const original = s.listings[0];
+    expect(() => transition(s, { type: "setListingStatus", id: original.id, status: "Deleted" })).toThrow();
+    expect(() => transition(s, { type: "editListing", listing: { ...original, sessions: 1 } })).toThrow();
+    s = transition(s, { type: "decline", exchange: s.exchanges[0].id, user: "bob", reason: "Unavailable" });
+    expect(s.exchanges[0].status).toBe("withdrawn");
+    expect(s.exchanges[0].declineReason).toBe("Unavailable");
+  });
+  it("holds Other skill suggestions until demo review", () => {
+    let s = seed("direct");
+    const suggestion = { ...s.listings[0], id: "new-suggestion", skill: "Other", otherSkill: "Portrait photography", sessions: 1 };
+    s = transition(s, { type: "listing", listing: suggestion });
+    expect(s.listings.at(-1)?.status).toBe("Pending review");
+    expect(() => transition(s, { type: "setListingStatus", id: suggestion.id, status: "Active" })).toThrow();
+    s = transition(s, { type: "reviewListing", id: suggestion.id, approved: true });
+    expect(s.listings.at(-1)?.status).toBe("Active");
+  });
+  it("resets consent after a proposal revision and releases expired capacity", () => {
+    let s = flow();
+    const exchange = s.exchanges[0];
+    s = transition(s, { type: "confirm", exchange: exchange.id, user: "alice" });
+    s = transition(s, { type: "reviseProposal", exchange: exchange.id, user: "alice", legs: exchange.legs.map((l) => ({ ...l, duration: 45 })) });
+    expect(s.exchanges[0].confirmations).toHaveLength(0);
+    expect(s.exchanges[0].legs[0].duration).toBe(45);
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(Date.parse(s.exchanges[0].expiresAt!) + 1000));
+      s = transition(s, { type: "expireProposal", exchange: exchange.id });
+      expect(s.exchanges[0].status).toBe("withdrawn");
+      expect(findMatches(s, "alice").length).toBeGreaterThan(0);
+    } finally { vi.useRealTimers(); }
   });
 });
 describe("service ledger", () => {
