@@ -1,8 +1,9 @@
 import { mergeStarterWorkspace, type StarterWorkspace } from "./starter";
-import { library, registerPerson, proposalStatus, type Exchange, type Leg, type Listing, type Person, type State } from "./domain";
+import { validRoute, library, registerPerson, proposalStatus, type Exchange, type Leg, type Listing, type Person, type State } from "./domain";
 
 type LiveRow = Record<string, unknown>;
 export type LiveSnapshot = {
+  discoverySuggestions?: { target_user_id: string; candidate_user_id: string; reason: string; rank_position: number; is_sample: boolean }[];
   starter?: StarterWorkspace;
   source: "supabase";
   fetchedAt: string;
@@ -115,6 +116,7 @@ export function liveSnapshotToState(snapshot: LiveSnapshot): State {
   const offers = new Map(snapshot.offers.map((row) => [text(row, "offer_id"), row]));
   const needs = new Map(snapshot.needs.map((row) => [text(row, "need_id"), row]));
   const matchRows = new Map(snapshot.matches.map((row) => [text(row, "match_id"), row]));
+  const matchingIdentities = Object.fromEntries(snapshot.users.map(row => [text(row, "user_id"), text(row, "matching_identity_id", text(row, "user_id"))]));
   const liveMatches: Record<Person, Leg[][]> = {};
   const rankings = [...(snapshot.recommendation_rankings || [])].sort((a, b) =>
     integer(a, "rank_position", Number.MAX_SAFE_INTEGER) - integer(b, "rank_position", Number.MAX_SAFE_INTEGER));
@@ -151,7 +153,7 @@ export function liveSnapshotToState(snapshot: LiveSnapshot): State {
     const first = legs.findIndex((leg) => leg.provider === userId);
     if (first < 0) continue;
     const ordered = [...legs.slice(first), ...legs.slice(0, first)];
-    if (!ordered.every((leg, index) => leg.receiver === ordered[(index + 1) % ordered.length].provider)) continue;
+    if (!validRoute({ matchingIdentities } as State, ordered)) continue;
     (liveMatches[userId] ??= []).push(ordered);
   }
 
@@ -353,6 +355,8 @@ export function liveSnapshotToState(snapshot: LiveSnapshot): State {
     notifications: saved("notifications"),
     liveStats: stats,
     liveMatches,
+    matchingIdentities,
+    discoverySuggestions: snapshot.discoverySuggestions || [],
     skillValueMultipliers,
     referenceHourlyHkd: config.get("bond_reference_hourly_hkd") || 200,
     completionBondRate: config.get("completion_bond_rate") || 0.2,

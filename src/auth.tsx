@@ -85,7 +85,7 @@ export function AuthGate({ children }: { children: (account: Account, logout: ()
           <section className="auth-card" aria-labelledby="auth-title">
             <span className="auth-card-kicker">YOUR SPACE IN THE RING</span>
             <h1 id="auth-title">Make room for more.</h1>
-            <p className="auth-intro">Your workspace starts with 2 discovery matches and 1 example exchange, personalized to your profile. Add your own skills whenever you’re ready.</p>
+            <p className="auth-intro">Add a skill you can offer and something you want to learn to find community exchanges. You can explore examples separately in demo mode.</p>
             <form onSubmit={submit}>
               <label>Display name<input id="registration-name" name="name" autoComplete="name" minLength={2} maxLength={80} placeholder="What should we call you?" required /></label>
               <label>Email<input name="email" type="email" autoComplete="email" maxLength={254} placeholder="you@example.com" required /></label>

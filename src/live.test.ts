@@ -49,11 +49,16 @@ describe("live recommendation snapshot", () => {
     expect(route[0].duration).toBe(60);
     expect(route[0].mode).toBe("Online");
     expect(findMatches(state, "u2")).toEqual([]);
+    snapshot.users.forEach(row => row.matching_identity_id = "same-person");
+    expect(findMatches(liveSnapshotToState(snapshot), "u1")).toEqual([]);
+    snapshot.users.forEach(row => delete row.matching_identity_id);
     const proposed = transition(state, { type: "propose", legs: route });
     expect(bondQuote(state, route[0])).toMatchObject({ referenceValue: 300, amount: 60 });
     expect(exchangeBonds(proposed, proposed.exchanges[0].id)).toHaveLength(2);
+    snapshot.discoverySuggestions = [{ target_user_id: "u1", candidate_user_id: "u2", reason: "Complementary listed skill", rank_position: 1, is_sample: false }];
     snapshot.recommendation_rankings = [];
     const unranked = liveSnapshotToState(snapshot);
+    expect(unranked.discoverySuggestions).toHaveLength(1);
     expect(findMatches(unranked, "u1")).toEqual([]);
     expect(() => transition(unranked, { type: "propose", legs: route })).toThrow("no longer available");
     snapshot.exchange_legs = route.map((leg, index) => ({ leg_id: leg.id, exchange_id: "ended", provider_id: leg.provider, receiver_id: leg.receiver, offer_id: leg.offer, need_id: leg.need, skill_id: index ? "s2" : "s1", duration_minutes: leg.duration, total_sessions: leg.sessions }));

@@ -1,0 +1,21 @@
+{
+  "users": 1018,
+  "synthetic_users": 700,
+  "added": {
+    "offers": 560,
+    "needs": 560,
+    "offer_availability": 1120,
+    "need_availability": 1120
+  },
+  "matches": 2879,
+  "edges": 8128,
+  "synthetic_min_matches": 5,
+  "active_without_exchange": 103,
+  "published": {
+    "ok": true,
+    "matches": 2879,
+    "rankings": 5950,
+    "edges": 8128
+  },
+  "verified_synthetic_min_matches": 5
+}

@@ -18,14 +18,16 @@ from engine.job import run_live_job
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--apply', action='store_true')
+parser.add_argument('--target', type=int, default=1000)
 args = parser.parse_args()
 client = supabase_client()
 assert client.url == 'https://mwyictnozocjicjeacqk.supabase.co', 'Unexpected target project'
 data = load_live_dataset(client)
-prefix = 'sample1000_'
+assert args.target >= 1000
+prefix = f'sample{args.target}_'
 existing = {u['user_id'] for u in data.users}
 base_count = sum(not uid.startswith(prefix) for uid in existing)
-count = max(700, ((1000 - base_count + 1) // 2) * 2)
+count = max(700, ((1000 - base_count + 1) // 2) * 2) if args.target == 1000 else max(0, args.target - base_count)
 rng = random.Random(1003)
 now = datetime.now(timezone.utc).isoformat()
 skills = sorted([s for s in data.skills if s['status'] == 'Active'], key=lambda s: s['skill_id'])
@@ -46,7 +48,9 @@ last = ['Chan','Wong','Patel','Kim','Nguyen','Tan','Ali','Silva','Garcia','Chen'
 locations = ['Kowloon','Sha Tin','Central','Tseung Kwan O','Tuen Mun','Tai Po','Tsuen Wan','North Point']
 batch = {t: [] for t in ['users','offers','needs','offer_availability','need_availability','exchange_preferences']}
 profiles = []
-for pair in range(count // 2):
+for pair_index in range((count + 1) // 2):
+    # An odd final profile reuses the first pair's compatible terms.
+    pair = 0 if count % 2 and pair_index == count // 2 else pair_index
     a = skills[pair % len(skills)]
     b = skills[(pair + 1 + (pair // len(skills)) * 7) % len(skills)]
     if a == b: b = skills[(skills.index(a) + 1) % len(skills)]
@@ -57,7 +61,8 @@ for pair in range(count // 2):
     slot_ids = [int(slots[pair % len(slots)]['slot_id'])]
     if pair % 5 == 0: slot_ids.append(int(slots[(pair + 1) % len(slots)]['slot_id']))
     for side, (offer, need) in enumerate([(a,b),(b,a)]):
-        index = pair * 2 + side + 1
+        index = pair_index * 2 + side + 1
+        if index > count: continue
         uid = f'{prefix}{index:04d}'
         category = category_names[offer['category_id']]
         background = rng.choice(backgrounds.get(category, ['Community learner']))
@@ -82,18 +87,19 @@ start = time.monotonic()
 matches, edges = generate_matches(data)
 elapsed = round(time.monotonic()-start, 2)
 covered = {u for m in matches for u in m.participants if u in new_ids}
-assert len(data.users) >= 1000
+assert len(data.users) >= args.target
 assert covered == new_ids, f'{len(new_ids-covered)} new profiles have no match'
 summary = dict(before_users=len(existing),new_users=len(new_ids),after_users=len(data.users),new_offers=len(batch['offers']),new_needs=len(batch['needs']),skills_covered=len({p['offers'] for p in profiles}),backgrounds=dict(Counter(p['background'] for p in profiles)),modes=dict(Counter(p['mode'] for p in profiles)),candidate_edges=len(edges),matches=len(matches),direct=sum(m.match_type=='Direct' for m in matches),cycles=sum(m.match_type=='Cycle' for m in matches),matched_new_users=len(covered),compute_seconds=elapsed)
 print(json.dumps(summary), flush=True)
 assert elapsed < 120, 'Matching workload exceeds preflight budget'
-out = ROOT / 'audit' / 'sample-expansion'
+out = ROOT / 'audit' / ('sample-expansion' if args.target == 1000 else f'sample-expansion-{args.target}')
 out.mkdir(parents=True,exist_ok=True)
 (out/'profiles.json').write_text(json.dumps(profiles,indent=2))
 (out/'summary.json').write_text(json.dumps(summary,indent=2))
 if args.apply:
     for table in ['users','exchange_preferences']:
-        if batch[table]: client._request('POST',table,body=batch[table],prefer='resolution=ignore-duplicates,return=minimal')
+        for start in range(0, len(batch[table]), 500):
+            client._request('POST',table,body=batch[table][start:start+500],prefer='resolution=ignore-duplicates,return=minimal')
     operations = [dict(table=t,method='POST',body=batch[t]) for t in ['offers','needs','offer_availability','need_availability'] if batch[t]]
     if operations:
         revision = client.read_table('app_revision')[0]['revision']
@@ -101,7 +107,7 @@ if args.apply:
     print('Sample profiles and listings persisted; refreshing recommendations.',flush=True)
     result = run_live_job(client)
     users = client.read_table('users')
-    assert len(users)>=1000
+    assert len(users)>=args.target
     rankings = client.read_table('recommendation_rankings')
     ranked = {r['target_user_id'] for r in rankings}
     assert new_ids <= ranked

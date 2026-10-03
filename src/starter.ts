@@ -1,4 +1,4 @@
-import { seed, people, registerPerson, findMatches, proposalStatus, type State } from "./domain";
+import { seed, people, type State } from "./domain";
 
 export type StarterWorkspace = { ownerId: string; people: Record<string, string>; state: State };
 
@@ -38,14 +38,7 @@ export function createStarterWorkspace(userId: string, displayName: string): Sta
 
 export function mergeStarterWorkspace(live: State, starter: StarterWorkspace | undefined, userId: string | null): State {
   if (!starter || starter.ownerId !== userId) return live;
-  for (const [id, displayName] of Object.entries(starter.people)) registerPerson(id, displayName);
-  const sample = starter.state;
-  for (const exchange of sample.exchanges) exchange.status = proposalStatus(exchange);
-  const merged = { ...live, starterAvailable: true };
-  for (const field of ["listings", "exchanges", "sessions", "contributions", "bonds", "bondLedger", "disputes", "evaluations", "withdrawals", "messages", "bookings", "notifications"] as const) {
-    // Every field is a homogeneous array; the runtime key preserves its type.
-    (merged as unknown as Record<string, unknown>)[field] = [...(live[field] || []), ...(sample[field] || [])];
-  }
-  merged.liveMatches = { ...live.liveMatches, [userId!]: [...(live.liveMatches?.[userId!] || []), ...findMatches(sample, userId!)] };
-  return merged;
+  // Starter records stay in their example workspace. Live totals and matching
+  // must only describe listings and exchanges published to the community.
+  return { ...live, starterAvailable: true };
 }

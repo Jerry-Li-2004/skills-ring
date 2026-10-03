@@ -7,13 +7,17 @@ import { createRegistration } from "./registration.mjs";
 test("complete registration opens the API without passwords or confirmation and survives a server restart", async t => {
   const profiles = new Map();
   const starters = new Map();
+  const identityKeys = new Map();
   const realFetch = globalThis.fetch;
   t.mock.method(globalThis, "fetch", async (input, init) => {
     const url = new URL(input);
     if (url.hostname !== "registration.supabase.test") return realFetch(input, init);
     if (init.method === "POST") {
-      assert.equal(url.pathname, "/rest/v1/rpc/register_with_starter");
       const body = JSON.parse(init.body);
+      assert.match(body.identity_key, /^[a-f0-9]{64}$/);
+      identityKeys.set(body.profile_id, body.identity_key);
+      if (url.pathname === "/rest/v1/rpc/bind_matching_identity") return new Response(null, { status: 204 });
+      assert.equal(url.pathname, "/rest/v1/rpc/register_with_starter");
       const row = { user_id: body.profile_id, name: body.display_name, status: "Active" };
       profiles.set(row.user_id, row);
       starters.set(row.user_id, body.starter);
@@ -51,6 +55,9 @@ test("complete registration opens the API without passwords or confirmation and 
   assert.equal(await registration.authenticate({ headers: { authorization: `Bearer ${token}x` } }), null);
   const duplicate = await (await register({ name: user.name, email: user.email })).json();
   assert.notEqual(duplicate.user.userId, user.userId);
+  assert.equal(identityKeys.get(duplicate.user.userId), identityKeys.get(user.userId));
+  const namesake = await (await register({ name: user.name, email: "someone-else@example.com" })).json();
+  assert.notEqual(identityKeys.get(namesake.user.userId), identityKeys.get(user.userId));
   profiles.get(user.userId).status = "Inactive";
   assert.equal(await registration.authenticate({ headers }), null);
 });

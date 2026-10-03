@@ -51,7 +51,7 @@ vercel deploy --prod
 
 Vercel runs one daily recommendation refresh at 19:00 UTC (03:00 Hong Kong time), compatible with the current Hobby plan. Mutations also await an immediate refresh. A failed refresh does not discard an already committed change; the UI reports that recommendations are pending. Function execution is bounded to 300 seconds.
 
-Registration requires no Supabase Auth dashboard changes or email delivery setup. Names and email addresses are self-reported. Each registration creates a distinct profile, even when details match. Returning visits in the same browser reuse the saved receipt; leaving a profile or clearing browser data requires a new registration and does not recover previous exchanges. Keep the server secret stable because rotating it invalidates registration receipts.
+Registration requires no Supabase Auth dashboard changes or email delivery setup. Names and email addresses are self-reported. Each registration creates a distinct profile. A server-only HMAC of normalized email links profiles for matching exclusions only; it never grants access to another profile. Confirmed duplicate profiles can also share a matching identity. Display names are never used to infer identity. Legacy signed receipts bind their matching identity on the next authenticated request. Returning visits in the same browser reuse the saved receipt; leaving a profile or clearing browser data requires a new registration and does not recover previous exchanges. Keep the server secret stable because rotating it invalidates registration receipts.
 
 ## Data integrity and authorization
 

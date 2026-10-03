@@ -49,6 +49,25 @@ function withdraw(s: State) {
   });
 }
 describe("matching and confirmation", () => {
+  it("rejects self-teaching and repeated people even in ranked routes", () => {
+    const state = seed("direct");
+    const route = findMatches(state, "alice")[0];
+    const self = { ...route[0], id: "self", receiver: route[0].provider };
+    const malformed = [self, ...route];
+    state.liveMatches = { alice: [malformed] };
+    expect(findMatches(state, "alice")).toEqual([]);
+    expect(() => transition(state, { type: "propose", legs: malformed })).toThrow("different people");
+    state.liveMatches = { alice: [route] };
+    state.matchingIdentities = Object.fromEntries(route.map(l => [l.provider, "same-person"]));
+    expect(findMatches(state, "alice")).toEqual([]);
+    expect(() => transition(state, { type: "propose", legs: route })).toThrow("different people");
+  });
+  it("rejects a closed walk with repeated people even without a self edge", () => {
+    const state = seed("direct");
+    const route = findMatches(state, "alice")[0];
+    expect(() => transition(state, { type: "propose", legs: [...route, ...route] })).toThrow("different people");
+  });
+
   it("discovers a reciprocal match and warns about quantity imbalance", () => {
     const s = seed("direct"),
       m = findMatches(s, "alice");

@@ -27,7 +27,7 @@ export function createProductionStore({ url, key, moderatorIds = (process.env.MO
           if (row.details?.state?.notifications) row.details.state.notifications = row.details.state.notifications.filter(n => n.user === account.userId);
         }
       }
-      return { ...rows, ...(!internal ? { starter: (await starter.load(account))?.workspace } : {}), source: "supabase", liveUserId: account.userId, fetchedAt: new Date().toISOString(), revision: after[0].revision };
+      return { ...rows, discoverySuggestions: internal ? [] : await rpc("discovery_suggestions", { requested_user: account.userId }), ...(!internal ? { starter: (await starter.load(account))?.workspace } : {}), source: "supabase", liveUserId: account.userId, fetchedAt: new Date().toISOString(), revision: after[0].revision };
     }
     throw new Error("The community changed while loading. Please retry.");
   }
@@ -79,6 +79,8 @@ export function createProductionStore({ url, key, moderatorIds = (process.env.MO
       if ([...participants(existing), existing.recovery?.replacement].includes(account.userId)) throw new Error("A different moderator must review your own exchange.");
       const next = transition(state, { type: "resolve", dispute: dispute.id, resolution: body.resolution, reason: body.reason.trim(), moderator: account.userId });
       const exchange = next.exchanges.find(e => e.id === existing.id);
+      exchange.bonds = (next.bonds || []).filter(bond => bond.exchange === exchange.id);
+      exchange.bondLedger = (next.bondLedger || []).filter(entry => entry.exchange === exchange.id);
       exchange.serverState = {};
       for (const field of ["disputes", "evaluations", "withdrawals", "messages", "bookings", "notifications"]) {
         exchange.serverState[field] = (next[field] || []).filter(row => row.exchange === exchange.id || (field === "evaluations" && next.sessions.some(s => s.id === row.session && s.exchange === exchange.id)));

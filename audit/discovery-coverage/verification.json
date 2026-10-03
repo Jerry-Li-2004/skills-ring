@@ -1,0 +1,9 @@
+{
+  "total_users": 1018,
+  "active_users": 1007,
+  "verified_users": 1007,
+  "suggestions_per_user": 5,
+  "total_suggestions": 5035,
+  "inactive_users_excluded": 11,
+  "users_without_valid_exchange": 101
+}

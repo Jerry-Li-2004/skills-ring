@@ -33,6 +33,18 @@ class RecommendationEngineTests(unittest.TestCase):
         self.assertEqual(len(self.data.skills), 50)
         self.assertEqual(len(self.data.current_user_reliability), 300)
 
+    def test_profiles_for_same_person_cannot_exchange(self):
+        original = self.matches[0]
+        ids = set(original.participants)
+        users = [dict(row, matching_identity_id="same-person" if row["user_id"] in ids else row["user_id"]) for row in self.data.users]
+        data = replace(self.data, users=users)
+        matches, edges = generate_matches(data)
+        for edge in edges:
+            self.assertFalse(edge.offer["user_id"] in ids and edge.need["user_id"] in ids)
+        for match in matches:
+            identities = [data.users_by_id[user]["matching_identity_id"] for user in match.participants]
+            self.assertEqual(len(set(identities)), len(match.edges))
+
     def test_candidate_edges_respect_hard_filters(self) -> None:
         edges = self.edges
         self.assertGreater(len(edges), 0)

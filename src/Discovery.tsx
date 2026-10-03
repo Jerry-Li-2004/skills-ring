@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowRight, Bookmark, CalendarDays, Check, ChevronDown, Clock3, MapPin, RotateCcw, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
-import { type Leg, type Person, type State, bondQuote, hkd, imbalance, library, minutes, name, outstanding, people, reliability } from "./domain";
+import { type Leg, type Person, type State, validRoute, bondQuote, hkd, imbalance, library, minutes, name, outstanding, people, reliability } from "./domain";
 import "./discovery.css";
 
 type Route = { key: string; legs: Leg[] };
@@ -82,7 +82,7 @@ export function Discovery({ state, user, matches, query, loading = false, initia
   }, [user]);
   const routes = useMemo(() => {
     const unique = new Map<string, Leg[]>();
-    matches.forEach((legs) => unique.set(routeKey(legs), legs));
+    matches.filter(legs => validRoute(state, legs)).forEach((legs) => unique.set(routeKey(legs), legs));
     const rankByRoute = new Map(matches.map((legs, index) => [routeKey(legs), index]));
     return [...unique].map(([key, legs]) => ({ key, legs })).filter(({ key, legs }) => {
       const receive = legs.find((l) => l.receiver === user)!;
@@ -133,6 +133,8 @@ export function Discovery({ state, user, matches, query, loading = false, initia
     setLastPass(null); setIndex(0);
   }
   function openReview() { if (current) { track("profile_expansion", current.key, user); track("review", current.key, user); setReview(current); } }
+  const suggestions = (state.discoverySuggestions || []).filter(s => s.target_user_id === user && (!query || `${people[s.candidate_user_id]?.name} ${profileSkills(state, s.candidate_user_id, "offer")} ${profileSkills(state, s.candidate_user_id, "need")}`.toLowerCase().includes(query.toLowerCase())));
+  const noPublishedOffer = !!state.liveMatches && !state.listings.some(l => l.user === user && l.kind === "offer" && l.status === "Active" && !l.id.startsWith("starter_"));
   const activeFilterCount = Object.values(filter).filter(Boolean).length;
   return <section className="discover-flow" aria-label="Discover matches">
     {!online && <p className="discover-warning" role="status">You’re offline. These are locally saved demo matches; new activity will stay on this device.</p>}
@@ -173,7 +175,19 @@ export function Discovery({ state, user, matches, query, loading = false, initia
       {outstanding(state, member).length > 0 && <p className="discover-warning">{name(member)} has an unfinished commitment. Receive-first restrictions may affect when this exchange can begin.</p>}
       <div className="discover-actions"><button className="button primary" onClick={openReview}>Review match <ArrowRight size={18} /></button><button className="button" onClick={save}><Bookmark size={18} /> {savedView ? "Remove saved" : "Save"}</button><button className="button" onClick={pass}><X size={19} /> Pass</button></div>
       <p className="discover-hint">You’ll confirm the details together before anything is final.</p>
-    </>; })() : <div className="card discover-end"><h3>{savedView ? "No saved matches here" : "You’re through this stack"}</h3><p>{routes.length ? "You can broaden the filters, revisit saved matches, or update what you offer and need." : "No feasible matches are available. Try a new offer or need, or broaden your preferences."}</p><div className="button-row"><button className="button" onClick={() => { setFilter({ category: "", skill: "", mode: "", location: "", availability: "", duration: "", type: "", reliability: "" }); setSavedView(false); }}>Broaden filters</button><button className="button" onClick={onEditListings}>Edit offers or needs</button><button className="button" onClick={() => setSavedView(true)}>Revisit saved matches</button></div></div>}
+    </>; })() : <div className="card discover-end"><h3>{savedView ? "No saved matches here" : noPublishedOffer ? "Add an offer to find exchange matches" : "You’re through this stack"}</h3><p>{noPublishedOffer ? "An exchange needs something you can give as well as something you want to learn. Publish an offer to start matching with the community." : routes.length ? "You can broaden the filters, revisit saved matches, or update what you offer and need." : "No feasible matches are available. Try a new offer or need, or broaden your preferences."}</p><div className="button-row"><button className="button" onClick={() => { setFilter({ category: "", skill: "", mode: "", location: "", availability: "", duration: "", type: "", reliability: "" }); setSavedView(false); }}>Broaden filters</button><button className="button" onClick={onEditListings}>Edit offers or needs</button><button className="button" onClick={() => setSavedView(true)}>Revisit saved matches</button></div></div>}
+    {!savedView && suggestions.length > 0 && <section className="card discover-suggestions" aria-label="People to explore">
+      <header className="discover-suggestions-heading"><div><span className="eyebrow">EXPLORE YOUR COMMUNITY</span><h2>People to explore</h2><p>Discover complementary skills. Check availability and agree on exchange terms together.</p></div><span className="discover-suggestions-count">{suggestions.length} {suggestions.length === 1 ? "person" : "people"}</span></header>
+      <div className="discover-suggestions-grid">{suggestions.map(s => {
+        const person = people[s.candidate_user_id];
+        return <article className="discover-suggestion" key={s.candidate_user_id}>
+          <header><span className={`avatar ${person?.color || "purple"}`} aria-hidden="true">{person?.initials || "?"}</span><div><h3>{person?.name || s.candidate_user_id}</h3><span className="discover-suggestion-label">{s.is_sample ? "Sample profile" : "Community member"}</span></div></header>
+          <p className="discover-suggestion-reason">{s.reason}</p>
+          <dl className="discover-suggestion-skills"><div><dt>Offers</dt><dd>{profileSkills(state, s.candidate_user_id, "offer")}</dd></div><div><dt>Wants to learn</dt><dd>{profileSkills(state, s.candidate_user_id, "need")}</dd></div></dl>
+        </article>;
+      })}</div>
+      <footer className="discover-suggestions-footer"><p>These are discovery suggestions. Exchange compatibility still needs checking.</p><button className="button" onClick={onEditListings}>Update my offers or needs <ArrowRight size={16} /></button></footer>
+    </section>}
     {review && createPortal(<Review route={review} state={state} user={user} onClose={() => setReview(null)} onPropose={(legs) => { if (onPropose(legs)) { track("proposal", review.key, user); setReview(null); return true; } return false; }} />, document.body)}
   </section>;
 }

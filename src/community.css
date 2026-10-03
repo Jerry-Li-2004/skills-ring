@@ -39,3 +39,50 @@ nav[aria-label="Community pages"] { margin: 24px 0; align-items: center; flex-wr
   .moderation-workspace { padding: 16px; }
   .community-search { max-width: 100%; }
 }
+
+.community-profile { max-width:1140px; margin:0 auto; display:grid; gap:24px; color:#111631; }
+.profile-back { justify-self:start; }
+.profile-header { display:flex; align-items:center; justify-content:space-between; gap:28px; padding:32px; border-radius:18px; background:linear-gradient(120deg,#fff,#f7f6ff); }
+.profile-identity { display:flex; align-items:center; gap:22px; min-width:0; }
+.profile-identity > div { min-width:0; }
+.profile-identity .profile-avatar { width:88px; height:88px; border-radius:24px; font-size:28px; }
+.profile-eyebrow { color:#68738e; font-size:11px; font-weight:650; letter-spacing:.07em; }
+.profile-header h1 { margin:7px 0 8px; font-size:clamp(26px,3vw,36px); line-height:1.15; letter-spacing:-.035em; overflow-wrap:anywhere; }
+.profile-header p { margin:0; color:#68738e; font-size:14px; line-height:1.5; }
+.profile-stats { display:flex; flex-shrink:0; gap:28px; margin:0; padding-left:28px; border-left:1px solid #e4e5f2; }
+.profile-stats > div { display:flex; flex-direction:column-reverse; gap:6px; }
+.profile-stats dt { color:#68738e; font-size:12px; }
+.profile-stats dd { margin:0; font-size:28px; font-weight:700; }
+.profile-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+.profile-section-heading h2,.profile-exchange h2 { margin:0; font-size:22px; letter-spacing:-.025em; }
+.profile-section-heading > span { color:#68738e; font-size:12px; }
+.profile-skills-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.profile-skill { padding:24px; border-radius:16px; min-width:0; }
+.profile-kind { display:inline-flex; padding:5px 10px; border-radius:99px; font-size:11px; font-weight:700; background:#eeedff; color:#4c46a7; }
+.profile-kind.need { background:#e8f3f1; color:#286d60; }
+.profile-skill h3 { margin:14px 0 16px; font-size:19px; line-height:1.35; overflow-wrap:anywhere; }
+.profile-skill-details { display:grid; gap:10px; list-style:none; margin:0; padding:0; }
+.profile-skill-details li { display:flex; align-items:flex-start; gap:9px; color:#59647d; font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+.profile-skill-details svg { flex-shrink:0; margin-top:2px; color:#7b80ad; }
+.profile-skill-conditions { margin:18px 0 0; padding-top:14px; border-top:1px solid #ececf5; color:#68738e; font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+.profile-empty { padding:24px; color:#68738e; }
+.profile-exchange { padding:26px; border-radius:16px; display:flex; align-items:center; justify-content:space-between; gap:24px; background:#f8f7ff; }
+.profile-exchange > div { min-width:0; }
+.profile-exchange h2 { margin-top:7px; }
+.profile-exchange p { max-width:620px; margin:10px 0 0; color:#68738e; font-size:14px; line-height:1.6; }
+.profile-exchange-actions { display:grid; gap:10px; }
+.profile-exchange-actions .button { white-space:normal; overflow-wrap:anywhere; text-align:left; }
+.profile-exchange-actions svg { flex-shrink:0; }
+@media(max-width:900px) {
+  .profile-header { align-items:flex-start; flex-direction:column; }
+  .profile-stats { padding:20px 0 0; border-left:0; border-top:1px solid #e4e5f2; width:100%; }
+  .profile-exchange { align-items:stretch; flex-direction:column; }
+}
+@media(max-width:600px) {
+  .community-profile { gap:20px; }
+  .profile-header,.profile-skill,.profile-exchange { padding:20px; }
+  .profile-identity { gap:14px; }
+  .profile-identity .profile-avatar { width:60px; height:60px; border-radius:18px; font-size:21px; }
+  .profile-skills-grid { grid-template-columns:1fr; }
+  .profile-section-heading { align-items:flex-start; flex-direction:column; gap:6px; }
+}

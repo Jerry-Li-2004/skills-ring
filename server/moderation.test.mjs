@@ -23,6 +23,8 @@ function fixture() {
     exchange_legs: e.legs.map((l, index) => ({ leg_id: l.id, exchange_id: e.id, offer_id: l.offer, need_id: l.need, provider_id: l.provider, receiver_id: l.receiver, skill_id: l.skill, duration_minutes: l.duration, total_sessions: l.sessions, mode: l.mode, location: l.location, availability: l.availability, capacity: l.capacity, sort_order: index })),
     exchange_participants: participants(e).map(user_id => ({ exchange_id: e.id, user_id })),
     sessions: state.sessions.map(s => ({ session_id: s.id, exchange_id: e.id, exchange_leg_id: s.leg, provider_id: s.provider, receiver_id: s.receiver, scheduled_duration_minutes: s.duration, actual_duration_minutes: s.actual_duration, status: "Completed" })),
+    completion_bonds: state.bonds.map(b => ({ bond_id: b.id, exchange_id: b.exchange, exchange_leg_id: b.leg, owner_id: b.owner, currency: b.currency, reference_value: b.reference_value, bond_rate: b.rate, bond_amount: b.amount, status: b.status, returned_amount: b.returned_amount, applied_amount: b.applied_amount, terms_version: b.terms_version })),
+    bond_ledger_entries: state.bondLedger.map(b => ({ entry_id: b.id, bond_id: b.bond, exchange_id: b.exchange, event_type: b.event, amount: b.amount, recipient_id: b.recipient, reason: b.reason, created_at: b.created_at })),
     contributions: state.contributions.map(c => ({ contribution_id: c.id, exchange_id: e.id, session_id: c.session, provider_id: c.provider, receiver_id: c.receiver, skill_id: c.skill, duration_minutes: c.duration })),
   } };
 }
@@ -41,6 +43,7 @@ test("moderation HTTP boundary, atomic decisions, notifications, and repeat/conf
       commits++;
       for (const op of operations) {
         if (op.table === "exchanges") tables.exchanges = [op.body];
+        if (["completion_bonds", "bond_ledger_entries"].includes(op.table)) tables[op.table] = op.body;
       }
       tables.app_revision[0].revision++;
       return Response.json(tables.app_revision[0].revision);
@@ -77,6 +80,8 @@ test("moderation HTTP boundary, atomic decisions, notifications, and repeat/conf
     assert.equal(queue.sessions.length, 1);
     assert.equal((await request("mod", decision)).status, 200);
     assert.equal(commits, 1);
+    assert.equal(tables.completion_bonds.length, state.bonds.length);
+    assert.ok(tables.bond_ledger_entries.length >= state.bondLedger.length);
     const saved = tables.exchanges[0].details.state;
     assert.equal(saved.disputes[0].resolved_by, "mod");
     assert.equal(saved.disputes[0].resolution_reason, decision.reason);

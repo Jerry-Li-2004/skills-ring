@@ -16,12 +16,17 @@ test("cloud authentication requires a verified, active identity and never maps b
   assert.equal(await auth({ headers: { authorization: "Bearer test" } }), null);
   user.email_confirmed_at = new Date().toISOString();
   assert.equal((await auth({ headers: { authorization: "Bearer test" } })).userId, "usr_actual");
-  assert.match(calls.at(-1), /user_id=eq.usr_actual/);
+  assert.ok(calls.some(url => /user_id=eq.usr_actual/.test(url)));
+  assert.match(calls.at(-1), /rpc\/bind_matching_identity/);
 });
 
 test("snapshot hides other members' exchanges, sessions, and rankings", async t => {
-  t.mock.method(globalThis, "fetch", async input => {
+  t.mock.method(globalThis, "fetch", async (input, init) => {
     const table = new URL(input).pathname.split("/").at(-1);
+    if (table === "discovery_suggestions") {
+      assert.deepEqual(JSON.parse(init.body), { requested_user: "usr_me" });
+      return Response.json([{ target_user_id: "usr_me", candidate_user_id: "usr_peer" }]);
+    }
     const rows = {
       app_revision: [{ revision: 1 }],
       users: [{ user_id: "usr_me", name: "Me", status: "Active" }],
@@ -41,6 +46,7 @@ test("snapshot hides other members' exchanges, sessions, and rankings", async t 
   assert.deepEqual(data.completion_bonds, [{ exchange_id: "mine" }]);
   assert.deepEqual(data.bond_ledger_entries, [{ exchange_id: "mine" }]);
   assert.equal(data.recommendation_rankings.length, 1);
+  assert.deepEqual(data.discoverySuggestions, [{ target_user_id: "usr_me", candidate_user_id: "usr_peer" }]);
 });
 
 test("server rejects forged actors, moderator actions, and foreign listings before writes", async t => {

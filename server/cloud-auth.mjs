@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 const TOKEN_PATTERN = /^Bearer ([A-Za-z0-9._~-]+)$/i;
 
 export function createCloudAuthenticator({ url, publishableKey, serviceKey }) {
@@ -49,6 +50,14 @@ export function createCloudAuthenticator({ url, publishableKey, serviceKey }) {
       row = await profile(userId);
     }
     if (!row || row.status !== "Active") return null;
+    const identityKey = createHmac("sha256", serviceKey).update(`skills-ring-matching:${user.email.trim().toLowerCase()}`).digest("hex");
+    const bound = await fetch(`${base}/rest/v1/rpc/bind_matching_identity`, {
+      method: "POST",
+      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ profile_id: userId, identity_key: identityKey }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!bound.ok) throw new Error("Matching identity could not be checked.");
     return { userId, name: row.name, email: user.email, status: "Active", profileCreated };
   };
 }

@@ -5,12 +5,15 @@ import { supabaseRequest } from "./app.mjs";
 // Registration grants access immediately. The receipt keeps browser profiles
 // separate without passwords, email verification, or a Supabase Auth account.
 export function createRegistration({ url, key }) {
+  // This fingerprint only prevents self-matching; self-reported email never
+  // authenticates a returning account or grants access to another profile.
+  const identityKey = email => createHmac("sha256", key).update(`skills-ring-matching:${email.trim().toLowerCase()}`).digest("hex");
   const sign = (payload) => createHmac("sha256", key).update(`skills-ring-registration:${payload}`).digest("base64url");
   return {
     async register({ name, email }) {
       const user = { userId: `usr_${randomUUID()}`, name, email, status: "Active" };
       await supabaseRequest({ url, key, table: "rpc/register_with_starter", method: "POST",
-        body: { profile_id: user.userId, display_name: name, starter: createStarterWorkspace(user.userId, name) } });
+        body: { profile_id: user.userId, display_name: name, starter: createStarterWorkspace(user.userId, name), identity_key: identityKey(email) } });
       const payload = Buffer.from(JSON.stringify(user)).toString("base64url");
       return { user, token: `sr1.${payload}.${sign(payload)}` };
     },
@@ -27,6 +30,8 @@ export function createRegistration({ url, key }) {
       const rows = await supabaseRequest({ url, key, table: "users",
         query: { select: "user_id,name,status", user_id: `eq.${user.userId}`, limit: "1" } });
       if (!rows?.[0] || rows[0].status !== "Active") return null;
+      await supabaseRequest({ url, key, table: "rpc/bind_matching_identity", method: "POST",
+        body: { profile_id: user.userId, identity_key: identityKey(user.email) } });
       return { ...user, name: rows[0].name };
     },
   };

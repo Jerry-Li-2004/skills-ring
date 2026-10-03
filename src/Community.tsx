@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { ArrowLeft, ArrowRight, CalendarDays, Clock3, MapPin } from "lucide-react";
+import "./community.css";
 import { demoPeople, people, reliability, findMatches, type State, type Leg } from "./domain";
 import { communityMembers } from "./community-model";
 
@@ -15,10 +17,22 @@ export function Community({ state, demo, user, onReview, onAdd }: { state: State
     const listings = state.listings.filter(l => l.user === member && l.status === "Active");
     const routes = findMatches(state, user).filter(route => route.some(l => l.provider === member || l.receiver === member));
     const stats = reliability(state, member);
-    return <section className="card"><button className="button" onClick={() => setSelected(null)}>Back to community</button>
-      <h1>{directory[member].name}</h1><p>{demo ? "Fictional demo member" : "Community member"} · {stats.sessions} services given · {stats.reviews} evaluations</p>
-      <h2>Offers and needs</h2>{listings.length ? listings.map(l => <article className="booking-card" key={l.id}><h3>{l.kind === "offer" ? "Offers" : "Wants to learn"}: {l.skill}</h3><p>{l.duration} minutes · {l.sessions} sessions · {l.mode} · {l.location}</p><p>{l.availability.join(" · ")}</p><p>{l.conditions}</p></article>) : <p>No active public listings yet.</p>}
-      {member !== user && <><h2>Exchange together</h2>{routes.length ? routes.map((route, index) => <button className="button" key={route.map(l => l.id).join("|")} onClick={() => onReview(route)}>Review match {index + 1}: {route.map(l => l.skill).join(" → ")}</button>) : <><p>No compatible route is available yet. Add an offer or need to find a match. Messaging opens after a proposal.</p><button className="button primary" onClick={onAdd}>Add an offer or need</button></>}</>}
+    const person = directory[member];
+    return <section className="community-profile" aria-label={`${person.name}'s profile`}>
+      <button className="button profile-back" onClick={() => setSelected(null)}><ArrowLeft size={16} /> Back to community</button>
+      <header className="card profile-header">
+        <div className="profile-identity"><span className={`avatar ${person.color} profile-avatar`} aria-hidden="true">{person.initials}</span><div><span className="profile-eyebrow">{demo ? "Fictional demo member" : "Community member"}</span><h1>{person.name}</h1><p>Share a skill. Learn something new, together.</p></div></div>
+        <dl className="profile-stats"><div><dt>Services given</dt><dd>{stats.sessions}</dd></div><div><dt>Evaluations</dt><dd>{stats.reviews}</dd></div></dl>
+      </header>
+      <section className="profile-listings" aria-labelledby="profile-listings-title">
+        <header className="profile-section-heading"><h2 id="profile-listings-title">Offers and needs</h2><span>{listings.length} active {listings.length === 1 ? "listing" : "listings"}</span></header>
+        {listings.length ? <div className="profile-skills-grid">{listings.map(l => <article className="card profile-skill" key={l.id}>
+          <span className={`profile-kind ${l.kind}`}>{l.kind === "offer" ? "Offers" : "Wants to learn"}</span><h3>{l.skill === "Other" ? l.otherSkill || l.skill : l.skill}</h3>
+          <ul className="profile-skill-details"><li><Clock3 size={16} /><span>{l.duration} minutes · {l.sessions} {l.sessions === 1 ? "session" : "sessions"}</span></li><li><MapPin size={16} /><span>{l.mode} · {l.location}</span></li><li><CalendarDays size={16} /><span>{l.availability.join(" · ") || "Availability to be agreed"}</span></li></ul>
+          {l.conditions && <p className="profile-skill-conditions">{l.conditions}</p>}
+        </article>)}</div> : <p className="card profile-empty">No active public listings yet.</p>}
+      </section>
+      {member !== user && <section className="card profile-exchange" aria-labelledby="profile-exchange-title"><div><span className="profile-eyebrow">LEARN TOGETHER</span><h2 id="profile-exchange-title">Exchange together</h2><p>{routes.length ? "Explore a compatible exchange and confirm the details together." : "No compatible route is available yet. Add an offer or need to find a match. Messaging opens after a proposal."}</p></div><div className="profile-exchange-actions">{routes.length ? routes.map((route, index) => <button className="button" key={route.map(l => l.id).join("|")} onClick={() => onReview(route)}>Review match {index + 1}: {route.map(l => l.skill).join(" → ")} <ArrowRight size={16} /></button>) : <button className="button primary" onClick={onAdd}>Add an offer or need <ArrowRight size={16} /></button>}</div></section>}
     </section>;
   }
   return <><div className="notice"><p>{demo ? "Explore fictional members. Demo activity stays in your example workspace." : "Find community members and explore their active skills. Contact details are kept private."}</p></div>

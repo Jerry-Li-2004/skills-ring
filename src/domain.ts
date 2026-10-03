@@ -230,6 +230,8 @@ export type Evaluation = {
   comment: string;
 };
 export type State = {
+  matchingIdentities?: Record<Person, string>;
+  discoverySuggestions?: { target_user_id: string; candidate_user_id: string; reason: string; rank_position: number; is_sample: boolean }[];
   liveCatalog?: Record<string, string[]>;
   starterAvailable?: boolean;
   version: 1;
@@ -446,9 +448,18 @@ export function availableListing(state: State, listing: Listing): Listing {
   );
   return { ...listing, sessions: Math.max(0, listing.sessions - reserved) };
 }
+export function validRoute(state: State, legs: Leg[]): boolean {
+  const identity = (user: Person) => state.matchingIdentities?.[user] || user;
+  return legs.length >= 2 && legs.length <= 4 &&
+    new Set(legs.map(l => identity(l.provider))).size === legs.length &&
+    legs.every((l, i) => !!l.provider && !!l.receiver &&
+      identity(l.provider) !== identity(l.receiver) &&
+      l.receiver === legs[(i + 1) % legs.length].provider);
+}
 export function findMatches(state: State, user: Person): Leg[][] {
   if (state.liveMatches) {
     return (state.liveMatches[user] || []).filter((route) =>
+      validRoute(state, route) && route.some(l => l.provider === user) &&
       !state.exchanges.some((exchange) =>
         !["withdrawn", "defaulted", "declined", "cancelled", "expired"].includes(exchange.status) &&
         route.every((leg) => exchange.legs.some((existing) => existing.id === leg.id)),
@@ -476,6 +487,7 @@ export function findMatches(state: State, user: Person): Leg[][] {
   return results
     .filter(
       (route) =>
+        validRoute(state, route) &&
         !state.exchanges.some(
           (e) =>
             e.status !== "defaulted" &&
@@ -672,14 +684,8 @@ export function transition(input: State, action: Action): State {
     return state;
   }
   if (action.type === "propose") {
-    if (
-      action.legs.length < 2 ||
-      !action.legs.every(
-        (l, i) =>
-          l.receiver === action.legs[(i + 1) % action.legs.length].provider,
-      )
-    )
-      throw Error("The route must form a complete cycle.");
+    if (!validRoute(state, action.legs))
+      throw Error("The route must form a complete cycle of different people. You cannot teach yourself or another profile belonging to you.");
     const rankedRoute = state.liveMatches && Object.values(state.liveMatches).some((routes) =>
       routes.some((route) => route.length === action.legs.length &&
         route.every((leg) => action.legs.some((candidate) => candidate.id === leg.id))));

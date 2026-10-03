@@ -331,6 +331,8 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
     owed = outstanding(state, user),
     myListings = state.listings.filter((l) => l.user === user);
   const matches = findMatches(state, user);
+  const hasPublishedOffer = state.listings.some(l => l.user === user && l.kind === "offer" && l.status === "Active" && !l.id.startsWith("starter_"));
+  const publishedRequests = [...new Set(state.listings.filter(l => l.user === user && l.kind === "need" && l.status === "Active" && !l.id.startsWith("starter_")).map(l => l.skill))];
   const selectedExchange = state.exchanges.find((e) => e.id === selected);
   const add = (kind: "offer" | "need") => {
     setEditingListing(null);
@@ -524,7 +526,8 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
               </select>
             </label>
           </div>}
-          {state.starterAvailable && <div className="notice"><Sparkles size={20} /><p>Your starter skills, matches, and example exchange are saved to your profile. Explore them here, or add your own offers and requests whenever you’re ready.</p></div>}
+          {dataMode === "live" && state.starterAvailable && <div className="notice"><Sparkles size={20} /><div><p><strong>Your live workspace</strong> · Only published listings and community exchanges appear here. Demo examples are separate and do not count toward your matches.</p><button className="button small-button" onClick={() => onModeChange(true)}>Explore a demo</button></div></div>}
+          {dataMode === "live" && !hasPublishedOffer && <div className="notice" role="status"><AlertTriangle size={20} /><div><p><strong>No active published offer yet.</strong> {publishedRequests.length === 1 ? `Your ${publishedRequests[0]} request is published. ` : publishedRequests.length ? "Your requests are published. " : ""}Add a skill you can offer to unlock exchange matching. Demo offers do not count.</p><button className="button small-button" onClick={() => add("offer")}>Add an offer</button></div></div>}
           {liveError && <div className="warning"><AlertTriangle size={18} /> {liveError}</div>}
           {storageError && (
             <div className="warning">

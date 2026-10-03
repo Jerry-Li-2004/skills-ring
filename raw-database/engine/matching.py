@@ -43,6 +43,10 @@ class Match:
         )
 
 
+def matching_identity(data: DataSet, user_id: str) -> str:
+    return data.users_by_id.get(user_id, {}).get("matching_identity_id") or user_id
+
+
 def _is_active_user(data: DataSet, user_id: str) -> bool:
     user = data.users_by_id.get(user_id)
     return bool(user and user.get("status") == "Active")
@@ -66,7 +70,7 @@ def _edge_passes_hard_filters(
     offer: dict[str, str],
     need: dict[str, str],
 ) -> bool:
-    if offer["user_id"] == need["user_id"]:
+    if matching_identity(data, offer["user_id"]) == matching_identity(data, need["user_id"]):
         return False
     if not _is_active_user(data, offer["user_id"]):
         return False
@@ -216,6 +220,7 @@ def generate_cycle_matches(edges: list[CandidateEdge]) -> list[Match]:
 def generate_matches(data: DataSet) -> tuple[list[Match], list[CandidateEdge]]:
     edges = generate_candidate_edges(data)
     matches = generate_direct_matches(edges) + generate_cycle_matches(edges)
+    matches = [match for match in matches if len({matching_identity(data, user) for user in match.participants}) == len(match.edges)]
     matches.sort(
         key=lambda match: (
             -match.scores["final_score"],
