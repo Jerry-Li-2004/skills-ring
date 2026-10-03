@@ -1,0 +1,41 @@
+.community-search {
+  display: grid;
+  gap: 8px;
+  margin: 24px 0 12px;
+  max-width: 560px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.community-search input,
+.moderation-workspace select,
+.moderation-workspace textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid #d8d5e5;
+  border-radius: 12px;
+  background: white;
+  color: #292637;
+  font: inherit;
+}
+.community-search input:focus-visible,
+.moderation-workspace select:focus-visible,
+.moderation-workspace textarea:focus-visible {
+  outline: 3px solid #aaa1ff;
+  outline-offset: 2px;
+}
+nav[aria-label="Community pages"] { margin: 24px 0; align-items: center; flex-wrap: wrap; gap: 14px; }
+.moderation-workspace { padding: 24px; }
+.moderation-workspace label { display: grid; gap: 8px; margin: 18px 0; max-width: 680px; }
+.moderation-workspace textarea { min-height: 120px; resize: vertical; }
+.moderation-workspace details { margin: 18px 0; }
+.moderation-workspace .button { margin: 6px 8px 6px 0; white-space: normal; overflow-wrap: anywhere; }
+.profile-import { margin: 16px 0; max-width: 100%; font-size: 13px; }
+.profile-import summary { cursor: pointer; font-weight: 600; }
+.profile-import input { width: 100%; max-width: 100%; }
+.profile-import p { line-height: 1.5; }
+@media (max-width: 600px) {
+  .moderation-workspace { padding: 16px; }
+  .community-search { max-width: 100%; }
+}

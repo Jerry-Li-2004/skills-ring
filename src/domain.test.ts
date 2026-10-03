@@ -151,7 +151,8 @@ describe("P1 exchange coordination", () => {
     expect(() => transition(s, { type: "setListingStatus", id: original.id, status: "Deleted" })).toThrow();
     expect(() => transition(s, { type: "editListing", listing: { ...original, sessions: 1 } })).toThrow();
     s = transition(s, { type: "decline", exchange: s.exchanges[0].id, user: "bob", reason: "Unavailable" });
-    expect(s.exchanges[0].status).toBe("withdrawn");
+    expect(s.exchanges[0].status).toBe("declined");
+    expect(findMatches(s, "alice").length).toBeGreaterThan(0);
     expect(s.exchanges[0].declineReason).toBe("Unavailable");
   });
   it("holds Other skill suggestions until demo review", () => {
@@ -174,12 +175,21 @@ describe("P1 exchange coordination", () => {
     try {
       vi.setSystemTime(new Date(Date.parse(s.exchanges[0].expiresAt!) + 1000));
       s = transition(s, { type: "expireProposal", exchange: exchange.id });
-      expect(s.exchanges[0].status).toBe("withdrawn");
+      expect(s.exchanges[0].status).toBe("expired");
       expect(findMatches(s, "alice").length).toBeGreaterThan(0);
     } finally { vi.useRealTimers(); }
   });
 });
 describe("service ledger", () => {
+  it("keeps open disputes on hold and preserves a default decision when another case is released", () => {
+    let s = complete(complete(confirm(flow()), "alice"), "alice");
+    for (const session of s.sessions) s = transition(s, { type: "dispute", session: session.id, user: session.receiver, reason: "Service not delivered as agreed" });
+    s = transition(s, { type: "resolve", dispute: s.disputes[0].id, resolution: "Default", moderator: "mod", reason: "First service was not delivered." });
+    expect(s.exchanges[0].status).toBe("disputed");
+    s = transition(s, { type: "resolve", dispute: s.disputes[1].id, resolution: "Full release", moderator: "mod", reason: "Second service was fully delivered." });
+    expect(s.exchanges[0].status).toBe("defaulted");
+    expect(s.contributions).toHaveLength(2);
+  });
   it("creates separate contributions and received-first commitments atomically", () => {
     const s = complete(confirm(flow()), "alice");
     expect(s.contributions[0].duration).toBe(60);

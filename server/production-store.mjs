@@ -7,7 +7,8 @@ import { liveSnapshotToState } from "./generated/live-snapshot.mjs";
 const TABLES = ["users", "categories", "skills", "time_slots", "offers", "needs", "offer_availability", "need_availability", "reliability_history", "current_user_reliability", "exchanges", "exchange_matches", "matches", "recommendation_rankings", "exchange_participants", "exchange_legs", "exchange_confirmations", "sessions", "contributions"];
 const ACTIONS = new Set(["propose", "confirm", "decline", "cancelProposal", "reviseProposal", "expireProposal", "message", "booking", "acceptBooking", "cancelBooking", "noShow", "remindBooking", "complete", "withdraw", "replacement", "reconfirm", "amend", "confirmAmend", "dispute", "evaluate"]);
 
-export function createProductionStore({ url, key }) {
+export function createProductionStore({ url, key, moderatorIds = (process.env.MODERATOR_USER_IDS || "").split(",").map(id => id.trim()).filter(Boolean) }) {
+  const isModerator = account => moderatorIds.includes(account.userId);
   const request = args => supabaseRequest({ url, key, ...args });
   const starter = createStarterStore(request);
   const rpc = (name, body) => request({ table: `rpc/${name}`, method: "POST", body });
@@ -39,6 +40,52 @@ export function createProductionStore({ url, key }) {
   }
   return {
     snapshot,
+    isModerator,
+    async moderation(account) {
+      if (!isModerator(account)) throw new Error("Moderator access required.");
+      const data = await snapshot(account, true);
+      const state = liveSnapshotToState(data);
+      const examples = await fetchSupabaseTable({ url, key, table: "account_starter_workspaces" });
+      for (const row of examples) for (const field of ["disputes", "exchanges", "sessions", "messages"]) state[field] = [...(state[field] || []), ...(row.workspace?.state?.[field] || [])];
+      const ids = new Set(state.disputes.map(d => d.exchange));
+      return {
+        disputes: state.disputes,
+        exchanges: state.exchanges.filter(e => ids.has(e.id)),
+        sessions: state.sessions.filter(s => ids.has(s.exchange)),
+        messages: (state.messages || []).filter(m => ids.has(m.exchange)),
+      };
+    },
+    async resolve(account, body, save) {
+      if (!isModerator(account)) throw new Error("Moderator access required.");
+      if (typeof body.reason !== "string" || body.reason.trim().length < 10 || body.reason.length > 2000) throw new Error("Record a decision reason of 10–2000 characters.");
+      const data = await snapshot(account, true);
+      const state = liveSnapshotToState(data);
+      const examples = await fetchSupabaseTable({ url, key, table: "account_starter_workspaces" });
+      const example = examples.find(row => row.workspace?.state?.disputes.some(d => d.id === body.dispute));
+      if (example) {
+        const original = example.workspace.state;
+        const dispute = original.disputes.find(d => d.id === body.dispute);
+        const exchange = original.exchanges.find(e => e.id === dispute.exchange);
+        if (!exchange) throw new Error("Dispute not found.");
+        if ([...participants(exchange), exchange.recovery?.replacement].includes(account.userId)) throw new Error("A different moderator must review your own exchange.");
+        const next = transition(original, { type: "resolve", dispute: dispute.id, resolution: body.resolution, reason: body.reason.trim(), moderator: account.userId });
+        const saved = await request({ table: "account_starter_workspaces", method: "PATCH", query: { user_id: `eq.${example.user_id}`, revision: `eq.${example.revision}` }, body: { workspace: { ...example.workspace, state: next }, revision: example.revision + 1 }, prefer: "return=representation" });
+        if (!saved.length) throw new Error("The case changed. Refresh and review again.");
+        return { persisted: true };
+      }
+      const dispute = state.disputes.find(d => d.id === body.dispute);
+      const existing = state.exchanges.find(e => e.id === dispute?.exchange);
+      if (!existing) throw new Error("Dispute not found.");
+      if ([...participants(existing), existing.recovery?.replacement].includes(account.userId)) throw new Error("A different moderator must review your own exchange.");
+      const next = transition(state, { type: "resolve", dispute: dispute.id, resolution: body.resolution, reason: body.reason.trim(), moderator: account.userId });
+      const exchange = next.exchanges.find(e => e.id === existing.id);
+      exchange.serverState = {};
+      for (const field of ["disputes", "evaluations", "withdrawals", "messages", "bookings", "notifications"]) {
+        exchange.serverState[field] = (next[field] || []).filter(row => row.exchange === exchange.id || (field === "evaluations" && next.sessions.some(s => s.id === row.session && s.exchange === exchange.id)));
+      }
+      await transact(data.revision, write => save({ ...account, trustedModerator: true }, exchange, next.sessions.filter(s => s.exchange === exchange.id), next.contributions.filter(c => c.exchange === exchange.id), "resolve", write));
+      return { persisted: true };
+    },
     async listing(account, raw, id, save) {
       if (id.startsWith("starter_")) return starter.listing(account, raw, id);
       const data = await snapshot(account, true);

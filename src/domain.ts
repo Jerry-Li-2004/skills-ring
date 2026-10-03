@@ -54,14 +54,15 @@ export const slots = [
   "Sunday Evening",
 ];
 export type Person = string;
-export const people: Record<Person, { name: string; initials: string; color: string }> = {
+export const demoPeople: Readonly<Record<Person, { name: string; initials: string; color: string }>> = Object.freeze({
   alice: { name: "Alice Chen", initials: "AC", color: "purple" },
   bob: { name: "Bob Wilson", initials: "BW", color: "orange" },
   charlie: { name: "Charlie Lee", initials: "CL", color: "blue" },
   david: { name: "David Park", initials: "DP", color: "pink" },
   maya: { name: "Maya Patel", initials: "MP", color: "green" },
   james: { name: "James Wong", initials: "JW", color: "yellow" },
-};
+});
+export const people = { ...demoPeople };
 const personColors = ["purple", "orange", "blue", "pink", "green", "yellow"];
 export function registerPerson(userId: Person, displayName: string) {
   const initials = displayName.trim().split(/\s+/).map((word) => word[0]).join("").slice(0, 2).toUpperCase() || "?";
@@ -111,6 +112,9 @@ export type Status =
   | "settled"
   | "disputed"
   | "withdrawn"
+  | "declined"
+  | "cancelled"
+  | "expired"
   | "defaulted";
 export type Amendment = {
   id: string;
@@ -140,6 +144,10 @@ export type Exchange = {
     applied: boolean;
   };
 };
+export function proposalStatus(exchange: Pick<Exchange, "status" | "declineReason" | "recovery">): Status {
+  if (exchange.status !== "withdrawn" || exchange.recovery || !exchange.declineReason) return exchange.status;
+  return exchange.declineReason === "Cancelled by proposer" ? "cancelled" : exchange.declineReason === "Expired before everyone confirmed" ? "expired" : "declined";
+}
 export type Session = {
   id: string;
   exchange: string;
@@ -184,6 +192,9 @@ export type Dispute = {
   status: "Open" | "Resolved";
   resolution?: "Full release" | "Partial release" | "Default";
   released_minutes?: number;
+  resolved_by?: Person;
+  resolved_at?: string;
+  resolution_reason?: string;
 };
 export type Evaluation = {
   session: string;
@@ -194,6 +205,7 @@ export type Evaluation = {
   comment: string;
 };
 export type State = {
+  liveCatalog?: Record<string, string[]>;
   starterAvailable?: boolean;
   version: 1;
   listings: Listing[];
@@ -272,7 +284,7 @@ export function availableListing(state: State, listing: Listing): Listing {
         .reduce((n, l) => {
           // A withdrawn proposal reserves nothing; performed or agreed services keep their allocation.
           if (
-            e.status === "withdrawn" &&
+            ["withdrawn", "declined", "cancelled", "expired"].includes(e.status) &&
             !state.sessions.some((s) => s.exchange === e.id)
           )
             return n;
@@ -286,7 +298,7 @@ export function findMatches(state: State, user: Person): Leg[][] {
   if (state.liveMatches) {
     return (state.liveMatches[user] || []).filter((route) =>
       !state.exchanges.some((exchange) =>
-        !["withdrawn", "defaulted"].includes(exchange.status) &&
+        !["withdrawn", "defaulted", "declined", "cancelled", "expired"].includes(exchange.status) &&
         route.every((leg) => exchange.legs.some((existing) => existing.id === leg.id)),
       ),
     );
@@ -315,7 +327,7 @@ export function findMatches(state: State, user: Person): Leg[][] {
         !state.exchanges.some(
           (e) =>
             e.status !== "defaulted" &&
-            e.status !== "withdrawn" &&
+            !["withdrawn", "declined", "cancelled", "expired"].includes(e.status) &&
             route.every((l) => e.legs.some((el) => el.id === l.id)),
         ),
     )
@@ -392,7 +404,7 @@ export function contributionSettled(state: State, c: Contribution) {
   );
 }
 function refresh(state: State, e: Exchange) {
-  if (["disputed", "withdrawn", "defaulted", "proposed"].includes(e.status))
+  if (["disputed", "withdrawn", "defaulted", "proposed", "declined", "cancelled", "expired"].includes(e.status))
     return;
   const amounts = e.legs.map((l) => remaining(state, e, l));
   e.status = amounts.every((x) => x === 0)
@@ -436,6 +448,8 @@ export type Action =
       type: "resolve";
       dispute: string;
       resolution: "Full release" | "Partial release" | "Default";
+      moderator?: Person;
+      reason?: string;
     }
   | { type: "evaluate"; evaluation: Evaluation };
 export function transition(input: State, action: Action): State {
@@ -474,7 +488,7 @@ export function transition(input: State, action: Action): State {
   if (action.type === "setListingStatus") {
     const listing = state.listings.find((l) => l.id === action.id);
     if (!listing) throw Error("Listing not found.");
-    const involved = state.exchanges.some((e) => !["settled", "defaulted", "withdrawn"].includes(e.status) && e.legs.some((l) => l.offer === listing.id || l.need === listing.id));
+    const involved = state.exchanges.some((e) => !["settled", "defaulted", "withdrawn", "declined", "cancelled", "expired"].includes(e.status) && e.legs.some((l) => l.offer === listing.id || l.need === listing.id));
     if (action.status === "Deleted" && involved) throw Error("This listing supports an active proposal or exchange. Archive it instead.");
     if (action.status === "Active" && listing.skill === "Other" && !listing.otherApproved) throw Error("This skill suggestion needs review before matching.");
     if (action.status === "Deleted") state.listings = state.listings.filter((l) => l.id !== listing.id);
@@ -541,7 +555,7 @@ export function transition(input: State, action: Action): State {
     if (
       state.exchanges.some(
         (e) =>
-          !["withdrawn", "defaulted"].includes(e.status) &&
+          !["withdrawn", "defaulted", "declined", "cancelled", "expired"].includes(e.status) &&
           action.legs.every((l) => e.legs.some((x) => x.id === l.id)),
       )
     )
@@ -596,10 +610,14 @@ export function transition(input: State, action: Action): State {
   }
   if (action.type === "resolve") {
     const d = state.disputes.find((d) => d.id === action.dispute)!;
-    if (d.status !== "Open") throw Error("Dispute already resolved.");
+    if (!d || d.status !== "Open") throw Error("Dispute already resolved or unavailable.");
+    if (!["Full release", "Partial release", "Default"].includes(action.resolution)) throw Error("Choose a valid resolution.");
     const s = state.sessions.find((s) => s.id === d.session)!;
     d.status = "Resolved";
     d.resolution = action.resolution;
+    d.resolved_by = action.moderator;
+    d.resolved_at = new Date().toISOString();
+    d.resolution_reason = action.reason?.trim();
     d.released_minutes =
       action.resolution === "Full release"
         ? s.actual_duration
@@ -607,15 +625,13 @@ export function transition(input: State, action: Action): State {
           ? s.actual_duration / 2
           : 0;
     const e = state.exchanges.find((e) => e.id === d.exchange)!;
-    e.status =
-      action.resolution === "Default"
-        ? "defaulted"
-        : state.disputes.some((x) => x.exchange === e.id && x.status === "Open")
-          ? "disputed"
-          : "active";
+    e.status = state.disputes.some(x => x.exchange === e.id && x.status === "Open")
+      ? "disputed"
+      : state.disputes.some(x => x.exchange === e.id && x.resolution === "Default") ? "defaulted" : "active";
     e.audit.push(
-      `Recorded resolution: ${action.resolution}; ${d.released_minutes} min released. Original contribution preserved.`,
+      `Recorded resolution: ${action.resolution}; ${d.released_minutes} min released.${action.moderator ? ` Moderator ${action.moderator}: ${d.resolution_reason}.` : ""} Original contribution preserved.`,
     );
+    notify(participants(e), e.id, `Dispute resolved: ${action.resolution}. ${d.resolution_reason || "Review the session decision."}`);
     refresh(state, e);
     return state;
   }
@@ -623,7 +639,7 @@ export function transition(input: State, action: Action): State {
   if (!e) throw Error("Exchange not found.");
   if (action.type === "expireProposal") {
     if (e.status !== "proposed" || !e.expiresAt || Date.parse(e.expiresAt) > Date.now()) throw Error("This proposal has not expired.");
-    e.status = "withdrawn";
+    e.status = "expired";
     e.declineReason = "Expired before everyone confirmed";
     e.audit.push("Proposal expired; reserved capacity released. A fresh proposal needs new consent.");
     notify(participants(e), e.id, "An exchange proposal expired before everyone confirmed.");
@@ -646,7 +662,7 @@ export function transition(input: State, action: Action): State {
   if (action.type === "decline" || action.type === "cancelProposal") {
     if (e.status !== "proposed" || !participants(e).includes(action.user)) throw Error("This proposal is no longer open.");
     if (action.type === "decline" && !action.reason.trim()) throw Error("Please give a reason.");
-    e.status = "withdrawn";
+    e.status = action.type === "decline" ? "declined" : "cancelled";
     e.declineReason = action.type === "decline" ? action.reason.trim() : "Cancelled by proposer";
     e.audit.push(`${name(action.user)} ${action.type === "decline" ? "declined" : "cancelled"} the proposal: ${e.declineReason}.`);
     notify(participants(e).filter((p) => p !== action.user), e.id, `Proposal ${action.type === "decline" ? "declined" : "cancelled"} by ${name(action.user)}.`);
@@ -766,7 +782,7 @@ export function transition(input: State, action: Action): State {
   if (action.type === "withdraw") {
     if (
       !participants(e).includes(action.user) ||
-      ["settled", "defaulted", "disputed", "withdrawn"].includes(e.status)
+      ["settled", "defaulted", "disputed", "withdrawn", "declined", "cancelled", "expired"].includes(e.status)
     )
       throw Error("Withdrawal is unavailable.");
     if (!action.reason.trim()) throw Error("Please record a reason.");

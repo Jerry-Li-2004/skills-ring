@@ -4,8 +4,10 @@ import { EntryIntro } from "./EntryIntro";
 import { SkillOrbit } from "./experience";
 import { authenticatedFetch, supabase } from "./supabase";
 import "./auth.css";
+import { ProfileImport } from "./ProfileImport";
 
 export type Account = {
+  moderator?: boolean;
   userId: string;
   name: string;
   email: string;
@@ -91,6 +93,7 @@ export function AuthGate({ children }: { children: (account: Account, logout: ()
               <button className="auth-submit" type="submit" disabled={busy}>{busy ? "Opening your workspace…" : "Join and start exploring"} {!busy && <ArrowRight size={17} />}</button>
             </form>
             <p className="auth-card-footnote">Your profile stays available in this browser. Clearing browser data or leaving this profile means registering a new one.</p>
+            <ProfileImport />
           </section>
         </div>
         <div className="auth-home-features" aria-label="How Skills-Ring works">

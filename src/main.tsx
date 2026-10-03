@@ -46,6 +46,7 @@ import {
   type Leg,
   seed,
   transition,
+  proposalStatus,
   people,
   name,
   minutes,
@@ -66,8 +67,13 @@ import {
 } from "./domain";
 import "./styles.css";
 import "./theme.css";
+import "./community.css";
 import { SkillCover } from "./SkillCover";
 import { AuthGate, type Account } from "./auth";
+import { Community } from "./Community";
+import { Moderation } from "./Moderation";
+import { ProfileImport } from "./ProfileImport";
+import { restoreDemoMode } from "./community-model";
 import { EntryIntro } from "./EntryIntro";
 import { Discovery, trackDiscoveryEvent } from "./Discovery";
 import { Coordination } from "./Coordination";
@@ -128,7 +134,9 @@ function SkillIcon({ skill }: { skill: string }) {
   );
 }
 function App({ account, onLogout }: { account: Account; onLogout: () => Promise<void> }) {
-  const [demo, setDemo] = useState(false);
+  const [demo, setDemo] = useState(() => {
+    try { return restoreDemoMode(localStorage, account.userId); } catch { return false; }
+  });
   function changeMode(next: boolean) {
     try { localStorage.setItem(`skills-ring-mode-v1-${account.userId}`, next ? "demo" : "live"); } catch { /* Mode still changes for this visit. */ }
     setDemo(next);
@@ -151,6 +159,7 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
           listing.location = "Local meeting point";
       }
       for (const exchange of saved.exchanges) {
+        exchange.status = proposalStatus(exchange);
         const legs = [...exchange.legs];
         if (exchange.recovery?.leg) legs.push(exchange.recovery.leg);
         let renamed = false;
@@ -311,7 +320,7 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
     (e) => participants(e).includes(user) || e.recovery?.replacement === user,
   );
   const active = myExchanges.filter(
-    (e) => !["settled", "defaulted", "proposed"].includes(e.status),
+    (e) => !["settled", "defaulted", "proposed", "withdrawn", "declined", "cancelled", "expired"].includes(e.status),
   );
   const myContributions = state.contributions.filter(
       (c) => c.provider === user,
@@ -450,6 +459,7 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
             <div className="account-menu-panel">
               <strong>{account.name}</strong>
               <small>{account.email}</small>
+              <ProfileImport />
               <button className="account-logout" onClick={() => void onLogout().catch(() => setToast("Could not leave your profile. Please try again."))}>Leave profile</button>
             </div>
           </details>
@@ -457,7 +467,7 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
       </header>
       <aside className={`sidebar ${menu ? "is-open" : ""}`}>
         <nav>
-          {nav.map(({ label, icon: Icon }) => (
+          {[...nav, ...(!demo && account.moderator ? [{ label: "Moderation", icon: ShieldCheck }] : [])].map(({ label, icon: Icon }) => (
             <button
               key={label}
               className={page === label ? "selected" : ""}
@@ -834,13 +844,13 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
                               <button className="text-link" onClick={() => edit(l)}>Edit</button>
                               <button className="text-link" onClick={() => { if (dataMode === "live") void saveListing({ ...l, id: id(), status: "Paused" }, "Draft copy saved. Review and activate it when ready."); else { act({ type: "duplicateListing", id: l.id }); setToast("Draft copy created. Review and activate it when ready."); } }}>Duplicate</button>
                               <button className="text-link" onClick={() => {
-                                const inUse = state.exchanges.some((e) => !["settled", "withdrawn", "defaulted"].includes(e.status) && e.legs.some((leg) => leg.offer === l.id || leg.need === l.id));
+                                const inUse = state.exchanges.some((e) => !["settled", "withdrawn", "defaulted", "declined", "cancelled", "expired"].includes(e.status) && e.legs.some((leg) => leg.offer === l.id || leg.need === l.id));
                                 if (inUse && !window.confirm("This listing supports an active proposal or exchange. Pause it for new matches?")) return;
                                 void changeListingStatus(l, l.status === "Active" ? "Paused" : "Active");
                               }}>{l.status === "Active" ? "Pause" : "Resume"}</button>
                               <button className="text-link" onClick={() => { void changeListingStatus(l, "Fulfilled"); }}>Mark fulfilled</button>
                               <button className="text-link" onClick={() => { void changeListingStatus(l, "Archived"); }}>Archive</button>
-                              <button className="text-link" onClick={() => { const inUse = state.exchanges.some((e) => !["settled", "withdrawn", "defaulted"].includes(e.status) && e.legs.some((leg) => leg.offer === l.id || leg.need === l.id)); if (inUse) { setToast("This listing supports an active proposal or exchange. Archive it when the exchange is finished."); return; } if (window.confirm("Delete this listing? This cannot be undone.")) void changeListingStatus(l, "Deleted"); }}>Delete</button>
+                              <button className="text-link" onClick={() => { const inUse = state.exchanges.some((e) => !["settled", "withdrawn", "defaulted", "declined", "cancelled", "expired"].includes(e.status) && e.legs.some((leg) => leg.offer === l.id || leg.need === l.id)); if (inUse) { setToast("This listing supports an active proposal or exchange. Archive it when the exchange is finished."); return; } if (window.confirm("Delete this listing? This cannot be undone.")) void changeListingStatus(l, "Deleted"); }}>Delete</button>
                             </div>
                           </div>
                         ))}
@@ -952,56 +962,9 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
                 </>
               )}
               {page === "Community" && (
-                <>
-                  <div className="notice">
-                    <Globe2 size={25} />
-                    <div>
-                      <strong>
-                        A community for everyone who has a skill to share
-                      </strong>
-                      <p>
-                        Share what you know and exchange with other individuals,
-                        wherever you are. These fictional profiles let you try
-                        the experience; confirmations and administration are
-                        simulated locally.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="community-grid">
-                    {(dataMode === "live" ? Object.keys(state.liveStats || {}) : Object.keys(people)).map((p) => {
-                      const person = people[p];
-                      const r = reliability(state, p as Person);
-                      return (
-                        <section className="card member-card" key={p}>
-                          <Avatar user={p as Person} size="large" />
-                          <h2>{person.name}</h2>
-                          <p>
-                            {state.listings
-                              .filter((l) => l.user === p && l.kind === "offer")
-                              .map((l) => l.skill)
-                              .join(" · ") || "Ready to share a skill"}
-                          </p>
-                          <div className="member-stats">
-                            <div>
-                              <strong>{r.sessions}</strong>
-                              <small>Services given</small>
-                            </div>
-                            <div>
-                              <strong>
-                                {r.onTime === null ? "—" : `${r.onTime}%`}
-                              </strong>
-                              <small>On time</small>
-                            </div>
-                          </div>
-                          <small className="muted">
-                            Based on {r.reviews} recorded evaluations
-                          </small>
-                        </section>
-                      );
-                    })}
-                  </div>
-                </>
+                <Community state={state} demo={demo} user={user} onReview={legs => { setInitialReviewKey(legs.map(l => l.id).join("|")); go("Discover matches"); }} onAdd={() => add("offer")} />
               )}
+              {page === "Moderation" && !demo && account.moderator && <Moderation user={account.userId} />}
             </>
           )}
           <footer className="page-footer">
@@ -1038,7 +1001,8 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
             user={user}
             initial={editingListing}
             live={dataMode === "live"}
-            onSave={(l) => { void saveListing(l); }}
+            catalog={dataMode === "live" && !editingListing?.id.startsWith("starter_") ? state.liveCatalog : undefined}
+            onSave={saveListing}
           />
         </Modal>
       )}
@@ -1491,23 +1455,30 @@ function ListingForm({
   initial,
   onSave,
   live = false,
+  catalog,
 }: {
+  catalog?: Record<string, string[]>;
   live?: boolean;
   kind: Listing["kind"];
   user: Person;
   initial?: Listing | null;
-  onSave: (l: Listing) => void;
+  onSave: (l: Listing) => void | Promise<void>;
 }) {
+  const choices = catalog || library;
+  const [saving, setSaving] = useState(false);
+  const initialCategory = initial?.category && choices[initial.category] ? initial.category : Object.keys(choices)[0] || "";
   const [currentKind, setKind] = useState(kind),
-    [category, setCategory] = useState<keyof typeof library>(initial?.category || "Programming"),
-    [skill, setSkill] = useState(initial?.skill || library[initial?.category || "Programming"][0]);
+    [category, setCategory] = useState(initialCategory),
+    [skill, setSkill] = useState(initial?.skill && choices[initialCategory]?.includes(initial.skill) ? initial.skill : choices[initialCategory]?.[0] || "");
   return (
     <form
       className="listing-form"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
+        if (saving) return;
         const f = new FormData(e.currentTarget);
-        onSave({
+        setSaving(true);
+        try { await onSave({
           id: initial?.id || id(),
           user,
           kind: initial?.kind || currentKind,
@@ -1524,7 +1495,7 @@ function ListingForm({
           dateFrom: (f.get("dateFrom") as string) || undefined,
           dateTo: (f.get("dateTo") as string) || undefined,
           status: initial?.status || "Active",
-        });
+        }); } finally { setSaving(false); }
       }}
     >
       {!initial && <div className="segmented">
@@ -1552,9 +1523,9 @@ function ListingForm({
           Category
           <select
             value={category}
-            onChange={(e) => { const next = e.target.value as keyof typeof library; setCategory(next); setSkill(library[next][0]); }}
+            onChange={(e) => { const next = e.target.value; setCategory(next); setSkill(choices[next][0]); }}
           >
-            {Object.keys(library).map((c) => (
+            {Object.keys(choices).map((c) => (
               <option key={c}>{c}</option>
             ))}
           </select>
@@ -1562,7 +1533,7 @@ function ListingForm({
         <label>
           Skill
           <select name="skill" value={skill} onChange={(e) => setSkill(e.target.value)}>
-            {library[category].filter(s => !live || s !== "Other").map((s) => (
+            {(choices[category] || []).filter(s => !live || s !== "Other").map((s) => (
               <option key={s}>{s}</option>
             ))}
           </select>
@@ -1642,8 +1613,8 @@ function ListingForm({
       <small className="muted">
         Conditions must match exactly for automatic matching. Agree on exact session dates within an exchange.
       </small>
-      <button className="button primary full-width" type="submit">
-        {initial ? "Save changes" : `Publish ${currentKind}`}
+      <button className="button primary full-width" type="submit" disabled={saving || !category || !skill}>
+        {saving ? "Saving and refreshing matches…" : initial ? "Save changes" : `Publish ${currentKind}`}
       </button>
     </form>
   );
@@ -1896,7 +1867,7 @@ function ExchangeDetails({
               </div>
               <p>{s.notes}</p>
               <EvaluationForm session={s.id} state={state} act={act} />
-              {!state.disputes.some((d) => d.session === s.id) && (
+              {(dataMode === "demo" || [s.provider, s.receiver].includes(user)) && !state.disputes.some((d) => d.session === s.id) && (
                 <details>
                   <summary>Dispute this session</summary>
                   <p>
@@ -1916,12 +1887,12 @@ function ExchangeDetails({
                       act({
                         type: "dispute",
                         session: s.id,
-                        user: s.receiver,
+                        user: dataMode === "live" ? user : s.receiver,
                         reason: disputeReason,
                       })
                     }
                   >
-                    Raise as {name(s.receiver)}
+                    Raise as {name(dataMode === "live" ? user : s.receiver)}
                   </button>
                 </details>
               )}
@@ -1969,6 +1940,7 @@ function ExchangeDetails({
                       ) : (
                         <p>
                           {d.resolution}: {d.released_minutes} min released.
+                          {d.resolution_reason && <> Decision: {d.resolution_reason}. Reviewed by {d.resolved_by} on {d.resolved_at}.</>}
                           Original claimed service retained.
                         </p>
                       )}
@@ -2089,7 +2061,7 @@ function ExchangeDetails({
                       className="button"
                       disabled={
                         !reason.trim() ||
-                        ["settled", "defaulted", "disputed"].includes(e.status)
+                        ["settled", "defaulted", "disputed", "declined", "cancelled", "expired"].includes(e.status)
                       }
                       onClick={() =>
                         act({

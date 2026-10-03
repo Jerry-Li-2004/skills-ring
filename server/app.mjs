@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { createCalendarExports } from "./calendar.mjs";
 
 const scrypt = promisify(callbackScrypt);
 const execFileAsync = promisify(execFile);
@@ -232,6 +233,7 @@ export function createAuthServer({
 } = {}) {
   if (!db && !authenticate) throw new Error("Database or cloud authentication is required.");
   const getAccount = authenticate || ((req) => currentUser(db, req));
+  const calendarExports = createCalendarExports(supabaseKey || randomBytes(32).toString("hex"));
   const attempts = new Map();
   let liveSnapshotCache = null;
   let liveSnapshotAt = 0;
@@ -410,6 +412,9 @@ export function createAuthServer({
       settled: "Settled",
       disputed: "Disputed",
       withdrawn: "Withdrawn",
+      declined: "Withdrawn",
+      cancelled: "Withdrawn",
+      expired: "Withdrawn",
       defaulted: "Defaulted",
     }[status];
   }
@@ -422,6 +427,7 @@ export function createAuthServer({
       createdAt: exchange.createdAt || null,
       expiresAt: exchange.expiresAt || null,
       declineReason: exchange.declineReason || null,
+      proposalOutcome: ["declined", "cancelled", "expired"].includes(exchange.status) ? exchange.status : null,
       proposedTerms: exchange.proposedTerms || null,
       recovery: exchange.recovery || null,
     };
@@ -437,7 +443,7 @@ export function createAuthServer({
     const status = exchangeStatus(rawExchange.status);
     if (!exchangeId || !status || legs.length < 2 || legs.length > 12) throw new Error("The exchange terms are invalid.");
     const participants = [...new Set(legs.flatMap((leg) => [leg.provider, leg.receiver]))];
-    if (![...participants, rawExchange.recovery?.replacement].includes(account.userId)) throw new Error("You are not a participant in this exchange.");
+    if (!(actionType === "resolve" && account.trustedModerator === true) && ![...participants, rawExchange.recovery?.replacement].includes(account.userId)) throw new Error("You are not a participant in this exchange.");
     if (!legs.every((leg, index) => typeof leg.id === "string" && leg.id.length <= 240 &&
       typeof leg.offer === "string" && typeof leg.need === "string" &&
       participants.includes(leg.provider) && participants.includes(leg.receiver) &&
@@ -560,7 +566,7 @@ export function createAuthServer({
           skill_id: leg.skill_id,
           duration_minutes: leg.duration_minutes,
           total_sessions: leg.total_sessions,
-          status: status === "Proposed" ? "Proposed" : status === "Settled" ? "Settled" : status === "Disputed" ? "Disputed" : status === "Defaulted" ? "Defaulted" : "Active",
+          status: ["declined", "cancelled", "expired"].includes(rawExchange.status) ? "Cancelled" : status === "Proposed" ? "Proposed" : status === "Settled" ? "Settled" : status === "Disputed" ? "Disputed" : status === "Defaulted" ? "Defaulted" : "Active",
           updated_at: now,
         },
         prefer: "resolution=merge-duplicates,return=minimal",
@@ -646,6 +652,21 @@ export function createAuthServer({
       return json(res, 404, { error: "Not found." });
     }
     if (req.method === "GET" && path === "/api/health") return json(res, 200, { ok: true, auth: register ? "registration" : authenticate ? "supabase" : "local" });
+    if (req.method === "POST" && path === "/api/calendar/exports") {
+      if (!await getAccount(req)) return json(res, 401, { error: "Not signed in." });
+      if (!allowed(req)) return json(res, 403, { error: "Invalid request origin." });
+      try {
+        const ticket = calendarExports.issue(await readJson(req));
+        return json(res, 200, { url: `/api/calendar/download?ticket=${ticket}` });
+      } catch { return json(res, 400, { error: "Calendar export could not be prepared. Check the session details." }); }
+    }
+    if (req.method === "GET" && path === "/api/calendar/download") {
+      try {
+        const content = calendarExports.download(new URL(req.url, "http://localhost").searchParams.get("ticket"));
+        res.writeHead(200, { "Content-Type": "text/calendar; charset=utf-8", "Content-Disposition": 'attachment; filename="skills-ring-session.ics"', "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff" });
+        return res.end(content);
+      } catch { return json(res, 410, { error: "Download expired or invalid. Export the calendar again." }); }
+    }
     if (register && req.method === "POST" && path === "/api/auth/register") {
       if (limited(req)) return json(res, 429, { error: "Too many attempts. Try again later." });
       let body;
@@ -659,7 +680,16 @@ export function createAuthServer({
     }
     if (req.method === "GET" && path === "/api/auth/me") {
       const user = await getAccount(req);
-      return user ? json(res, 200, { user }) : json(res, 401, { error: "Not signed in." });
+      return user ? json(res, 200, { user: { ...user, moderator: Boolean(productionStore?.isModerator?.(user)) } }) : json(res, 401, { error: "Not signed in." });
+    }
+    if (path === "/api/moderation" && ["GET", "POST"].includes(req.method)) {
+      const account = await getAccount(req);
+      if (!account) return json(res, 401, { error: "Not signed in." });
+      if (!productionStore?.isModerator?.(account)) return json(res, 403, { error: "Moderator access required." });
+      if (req.method === "POST" && !allowed(req)) return json(res, 403, { error: "Invalid request origin." });
+      try {
+        return json(res, 200, req.method === "GET" ? await productionStore.moderation(account) : await productionStore.resolve(account, await readJson(req), syncSupabaseExchange));
+      } catch (error) { return json(res, 422, { error: error instanceof Error ? error.message : "Could not process moderation request." }); }
     }
     if (req.method === "GET" && path === "/api/live/snapshot") {
       const account = await getAccount(req);

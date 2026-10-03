@@ -95,7 +95,7 @@ export function Discovery({ state, user, matches, query, loading = false, initia
       const receive = legs.find((l) => l.receiver === user)!;
       const listing = state.listings.find((l) => l.id === receive.offer);
       const member = receive.provider;
-      const proposed = state.exchanges.some((e) => !["withdrawn", "defaulted"].includes(e.status) && e.legs.every((l) => legs.some((routeLeg) => routeLeg.id === l.id)));
+      const proposed = state.exchanges.some((e) => !["withdrawn", "defaulted", "declined", "cancelled", "expired"].includes(e.status) && e.legs.every((l) => legs.some((routeLeg) => routeLeg.id === l.id)));
       return !proposed &&
         (!query || `${people[member].name} ${legs.map((l) => l.skill).join(" ")}`.toLowerCase().includes(query.toLowerCase())) &&
         (!filter.category || listing?.category === filter.category) &&

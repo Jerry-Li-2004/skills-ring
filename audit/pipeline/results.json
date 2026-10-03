@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-03",
+  "environment": "http://127.0.0.1:3012 with configured live Supabase project",
+  "result": "passed after local fixes",
+  "browser": {
+    "registration": "passed using temporary registration profile",
+    "addSkills": "published Guitar need and Python offer",
+    "myOffersAndNeeds": "both persisted listings visible with their exact terms",
+    "discoverMatchesBefore": 2,
+    "discoverMatchesAfter": 5,
+    "newDirectMatch": "Python for Guitar with temporary partner",
+    "reviewMatch": "full route and terms preview opened",
+    "evidence": "match-preview.png"
+  },
+  "database": {
+    "browserListingsVerified": 2,
+    "directMatchVerified": true,
+    "targetUserRank": 1,
+    "pythonRefresh": "completed without pending-recommendation warnings"
+  },
+  "fixes": [
+    "Live listing form now uses active Supabase categories and skills; Guitar is Creative, not the demo-only Music category.",
+    "Publish button shows saving and refreshing state and prevents repeated submission while awaiting the backend.",
+    "Existing live smoke test accepts the current registration health mode."
+  ],
+  "checks": {
+    "build": "passed",
+    "frontendTests": 37,
+    "productionTests": 12,
+    "authTests": 4,
+    "pythonTests": 17,
+    "liveSmoke": "passed listing writes, Python refresh, proposal, impersonation rejection, independent confirmations and settlement",
+    "diffWhitespace": "passed"
+  },
+  "production": {
+    "health": "passed",
+    "deployedChanges": false,
+    "fullProductionPipelineRetested": false
+  },
+  "notes": [
+    "The local backend saves listings to Supabase, then invokes raw-database/main.py to publish matches and recommendation_rankings. The browser reloads the snapshot.",
+    "This uses Supabase Postgres and snapshot refresh/polling, not a Realtime websocket subscription.",
+    "Concurrent recommendation jobs are serialized and refreshes can take substantial time."
+  ]
+}
