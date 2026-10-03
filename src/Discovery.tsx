@@ -40,18 +40,11 @@ function nextSlotDistance(slot: string) {
 function profileSkills(state: State, person: Person, kind: "offer" | "need") {
   return [...new Set(state.listings.filter((l) => l.user === person && l.kind === kind && l.status === "Active").map((l) => l.skill === "Other" ? l.otherSkill || "Other" : l.skill))].join(", ") || "None listed";
 }
-function Portrait({ person }: { person: Person }) {
-  const hasOwnPortrait = person === "alice" || person === "maya";
-  return <span className={`discover-portrait ${people[person].color}`} aria-hidden="true">
-    {hasOwnPortrait ? <img src={`/images/people/${person}.png`} alt="" /> : <img className={`discover-portrait-grid ${person}`} src="/images/people/others-grid.png" alt="" />}
-    <span className="discover-portrait-fallback">{people[person].initials}</span>
-  </span>;
-}
 function ProfilePanel({ state, person, skill, self }: { state: State; person: Person; skill: string; self?: boolean }) {
   const evidence = reliability(state, person);
   const listing = state.listings.find((l) => l.user === person && l.kind === "offer" && l.skill === skill);
   return <section className={`discover-profile-panel ${self ? "is-self" : "is-member"}`} aria-label={self ? "Your profile" : `${people[person].name}'s profile`}>
-    <div className="discover-portrait-wrap"><Portrait person={person} /><span className={`discover-portrait-status ${self ? "self" : "member"}`} aria-hidden="true">{self ? people[person].initials : <Check size={20} strokeWidth={2.5} />}</span></div>
+    <div className="discover-portrait-wrap" aria-hidden="true"><span className={`discover-portrait ${people[person].color}`}><span className="discover-portrait-fallback">{people[person].initials}</span></span><span className={`discover-portrait-status ${self ? "self" : "member"}`}>{self ? people[person].initials : <Check size={20} strokeWidth={2.5} />}</span></div>
     <h3>{people[person].name}</h3>
     <p className="discover-bio">{bios[person]}</p>
     <div className="discover-tags"><span>{listing?.category || skill}</span><span>{skill}</span></div>
