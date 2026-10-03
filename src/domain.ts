@@ -76,7 +76,11 @@ export type Listing = {
   availability: string[];
   level: number;
   conditions: string;
-  status: "Active" | "Paused";
+  status: "Active" | "Paused" | "Archived" | "Fulfilled" | "Pending review" | "Rejected";
+  otherSkill?: string;
+  otherApproved?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
 };
 export type Leg = {
   id: string;
@@ -118,6 +122,10 @@ export type Exchange = {
   status: Status;
   audit: string[];
   amendments: Amendment[];
+  createdAt?: string;
+  expiresAt?: string;
+  declineReason?: string;
+  proposedTerms?: Partial<Record<Leg["id"], { sessions?: number; duration?: number; mode?: string; location?: string; availability?: string }>>;
   recovery?: {
     withdrawn: Person;
     replacement?: Person;
@@ -188,6 +196,9 @@ export type State = {
   disputes: Dispute[];
   evaluations: Evaluation[];
   withdrawals: { exchange: string; user: Person; reason: string }[];
+  messages?: { id: string; exchange: string; author: Person; text: string; createdAt: string }[];
+  bookings?: { id: string; exchange: string; leg: string; start: string; timezone: string; place: string; status: "proposed" | "accepted" | "cancelled" | "completed" | "no-show"; acceptedBy: Person[]; reminded?: boolean }[];
+  notifications?: { id: string; user: Person; exchange: string; text: string; createdAt: string; read: boolean }[];
 };
 export const id = () => crypto.randomUUID();
 export const name = (p: Person) => people[p].name.split(" ")[0];
@@ -205,6 +216,7 @@ export function compatible(o: Listing, n: Listing) {
     n.status === "Active" &&
     n.sessions > 0 &&
     o.skill === n.skill &&
+    (o.skill !== "Other" || (!!o.otherSkill?.trim() && o.otherSkill.trim().toLowerCase() === n.otherSkill?.trim().toLowerCase())) &&
     o.category === n.category &&
     o.duration === n.duration &&
     o.sessions >= n.sessions &&
@@ -216,6 +228,8 @@ export function compatible(o: Listing, n: Listing) {
       o.location === "Anywhere" ||
       n.location === "Anywhere") &&
     o.availability.some((s) => n.availability.includes(s)) &&
+    (!o.dateTo || !n.dateFrom || o.dateTo >= n.dateFrom) &&
+    (!n.dateTo || !o.dateFrom || n.dateTo >= o.dateFrom) &&
     (!n.conditions || n.conditions === o.conditions) &&
     (!o.conditions || n.conditions === o.conditions)
   );
@@ -375,10 +389,25 @@ function refresh(state: State, e: Exchange) {
 }
 export type Action =
   | { type: "listing"; listing: Listing }
+  | { type: "editListing"; listing: Listing }
+  | { type: "duplicateListing"; id: string }
+  | { type: "setListingStatus"; id: string; status: Listing["status"] | "Deleted" }
+  | { type: "reviewListing"; id: string; approved: boolean }
   | { type: "pause"; id: string }
   | { type: "propose"; legs: Leg[] }
+  | { type: "decline"; exchange: string; user: Person; reason: string }
+  | { type: "cancelProposal"; exchange: string; user: Person }
+  | { type: "reviseProposal"; exchange: string; user: Person; legs: Leg[] }
+  | { type: "expireProposal"; exchange: string }
+  | { type: "message"; exchange: string; user: Person; text: string }
+  | { type: "booking"; exchange: string; leg: string; user: Person; start: string; timezone: string; place: string }
+  | { type: "acceptBooking"; exchange: string; booking: string; user: Person }
+  | { type: "cancelBooking"; exchange: string; booking: string; user: Person }
+  | { type: "noShow"; exchange: string; booking: string; user: Person }
+  | { type: "remindBooking"; exchange: string; booking: string }
+  | { type: "readNotifications"; user: Person }
   | { type: "confirm"; exchange: string; user: Person }
-  | { type: "complete"; exchange: string; leg: string; notes?: string }
+  | { type: "complete"; exchange: string; leg: string; booking?: string; notes?: string }
   | { type: "withdraw"; exchange: string; user: Person; reason: string }
   | { type: "replacement"; exchange: string; user: Person }
   | { type: "reconfirm"; exchange: string; user: Person }
@@ -394,6 +423,47 @@ export type Action =
   | { type: "evaluate"; evaluation: Evaluation };
 export function transition(input: State, action: Action): State {
   const state = structuredClone(input);
+  state.messages ??= [];
+  state.bookings ??= [];
+  state.notifications ??= [];
+  const notify = (users: Person[], exchange: string, text: string) => {
+    for (const user of users) state.notifications!.push({ id: id(), user, exchange, text, createdAt: new Date().toISOString(), read: false });
+  };
+  if (action.type === "readNotifications") {
+    state.notifications.filter((n) => n.user === action.user).forEach((n) => { n.read = true; });
+    return state;
+  }
+  if (action.type === "editListing" || action.type === "duplicateListing") {
+    const original = state.listings.find((l) => l.id === (action.type === "editListing" ? action.listing.id : action.id));
+    if (!original) throw Error("Listing not found.");
+    if (action.type === "duplicateListing") {
+      state.listings.push({ ...original, id: id(), status: "Paused" });
+      return state;
+    }
+    const reserved = original.sessions - availableListing(state, original).sessions;
+    if (action.listing.user !== original.user || action.listing.kind !== original.kind || action.listing.sessions < reserved || (reserved > 0 && (action.listing.skill !== original.skill || action.listing.duration !== original.duration)))
+      throw Error("Keep reserved sessions and their service terms; create a new listing for a different skill.");
+    if (!action.listing.availability.length || (action.listing.skill === "Other" && !action.listing.otherSkill?.trim()) || (action.listing.dateFrom && action.listing.dateTo && action.listing.dateFrom > action.listing.dateTo)) throw Error("Choose availability, a specific skill and a valid date range.");
+    state.listings[state.listings.indexOf(original)] = action.listing.skill === "Other" && (!original.otherApproved || original.otherSkill !== action.listing.otherSkill) ? { ...action.listing, otherApproved: false, status: "Pending review" } : action.listing;
+    return state;
+  }
+  if (action.type === "reviewListing") {
+    const listing = state.listings.find((l) => l.id === action.id);
+    if (!listing || listing.skill !== "Other" || listing.status !== "Pending review") throw Error("No skill suggestion is waiting for review.");
+    listing.otherApproved = action.approved;
+    listing.status = action.approved ? "Active" : "Rejected";
+    return state;
+  }
+  if (action.type === "setListingStatus") {
+    const listing = state.listings.find((l) => l.id === action.id);
+    if (!listing) throw Error("Listing not found.");
+    const involved = state.exchanges.some((e) => !["settled", "defaulted", "withdrawn"].includes(e.status) && e.legs.some((l) => l.offer === listing.id || l.need === listing.id));
+    if (action.status === "Deleted" && involved) throw Error("This listing supports an active proposal or exchange. Archive it instead.");
+    if (action.status === "Active" && listing.skill === "Other" && !listing.otherApproved) throw Error("This skill suggestion needs review before matching.");
+    if (action.status === "Deleted") state.listings = state.listings.filter((l) => l.id !== listing.id);
+    else listing.status = action.status;
+    return state;
+  }
   if (action.type === "listing") {
     const l = action.listing;
     if (
@@ -401,12 +471,14 @@ export function transition(input: State, action: Action): State {
       l.sessions < 1 ||
       !Number.isInteger(l.sessions) ||
       l.duration <= 0 ||
-      !l.availability.length
+      !l.availability.length ||
+      (l.skill === "Other" && !l.otherSkill?.trim()) ||
+      (!!l.dateFrom && !!l.dateTo && l.dateFrom > l.dateTo)
     )
       throw Error(
         "Choose a skill, session length, capacity, and availability.",
       );
-    state.listings.push(l);
+    state.listings.push(l.skill === "Other" ? { ...l, otherApproved: false, status: "Pending review" } : l);
     return state;
   }
   if (action.type === "pause") {
@@ -431,8 +503,10 @@ export function transition(input: State, action: Action): State {
           o &&
           n &&
           compatible(availableListing(state, o), availableListing(state, n)) &&
-          l.sessions === availableListing(state, n).sessions &&
-          l.duration === n.duration &&
+          Number.isInteger(l.sessions) && l.sessions >= 1 && l.sessions <= availableListing(state, n).sessions &&
+          Number.isInteger(l.duration) && l.duration >= 15 && l.duration <= 180 &&
+          ["Online", "Offline"].includes(l.mode) &&
+          !!l.availability.trim() && !!l.location.trim() &&
           l.provider === o.user &&
           l.receiver === n.user &&
           l.skill === o.skill
@@ -456,7 +530,10 @@ export function transition(input: State, action: Action): State {
       status: "proposed",
       audit: ["Exchange proposed. All participants must confirm."],
       amendments: [],
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
     });
+    notify([...new Set(action.legs.map((l) => l.receiver))], state.exchanges.at(-1)!.id, "A new exchange proposal needs your review.");
     return state;
   }
   if (action.type === "evaluate") {
@@ -520,9 +597,84 @@ export function transition(input: State, action: Action): State {
   }
   const e = state.exchanges.find((e) => e.id === action.exchange);
   if (!e) throw Error("Exchange not found.");
+  if (action.type === "expireProposal") {
+    if (e.status !== "proposed" || !e.expiresAt || Date.parse(e.expiresAt) > Date.now()) throw Error("This proposal has not expired.");
+    e.status = "withdrawn";
+    e.declineReason = "Expired before everyone confirmed";
+    e.audit.push("Proposal expired; reserved capacity released. A fresh proposal needs new consent.");
+    notify(participants(e), e.id, "An exchange proposal expired before everyone confirmed.");
+    return state;
+  }
+  if (action.type === "reviseProposal") {
+    if (e.status !== "proposed" || !participants(e).includes(action.user) || action.legs.length !== e.legs.length || !action.legs.every((l) => e.legs.some((old) => old.id === l.id && old.provider === l.provider && old.receiver === l.receiver && old.skill === l.skill))) throw Error("The proposal route has changed. Find a new match instead.");
+    for (const leg of action.legs) {
+      const offer = state.listings.find((l) => l.id === leg.offer);
+      const need = state.listings.find((l) => l.id === leg.need);
+      if (!offer || !need || !compatible(offer, need) || !Number.isInteger(leg.sessions) || leg.sessions < 1 || leg.sessions > Math.min(offer.sessions, need.sessions) || !Number.isInteger(leg.duration) || leg.duration < 15 || leg.duration > 180 || !["Online", "Offline"].includes(leg.mode) || !leg.location.trim() || !leg.availability.trim()) throw Error("Review the changed session terms and listing capacity.");
+    }
+    e.legs = action.legs;
+    e.confirmations = [];
+    e.expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
+    e.audit.push(`${name(action.user)} revised the proposed terms. Everyone must confirm again.`);
+    notify(participants(e).filter((p) => p !== action.user), e.id, `${name(action.user)} changed the proposal. Review and confirm the new terms.`);
+    return state;
+  }
+  if (action.type === "decline" || action.type === "cancelProposal") {
+    if (e.status !== "proposed" || !participants(e).includes(action.user)) throw Error("This proposal is no longer open.");
+    if (action.type === "decline" && !action.reason.trim()) throw Error("Please give a reason.");
+    e.status = "withdrawn";
+    e.declineReason = action.type === "decline" ? action.reason.trim() : "Cancelled by proposer";
+    e.audit.push(`${name(action.user)} ${action.type === "decline" ? "declined" : "cancelled"} the proposal: ${e.declineReason}.`);
+    notify(participants(e).filter((p) => p !== action.user), e.id, `Proposal ${action.type === "decline" ? "declined" : "cancelled"} by ${name(action.user)}.`);
+    return state;
+  }
+  if (action.type === "message") {
+    if (!participants(e).includes(action.user) || !action.text.trim() || action.text.length > 1000) throw Error("Enter a message of up to 1,000 characters.");
+    if (e.status === "proposed" && /(?:\+?\d[\d\s-]{7,}|\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b|https?:\/\/|www\.|\b\d{1,5}\s+\w+(?:\s+\w+){0,3}\s+(?:street|st|road|rd|avenue|ave)\b)/i.test(action.text)) throw Error("Keep contact details private until everyone has confirmed.");
+    state.messages.push({ id: id(), exchange: e.id, author: action.user, text: action.text.trim(), createdAt: new Date().toISOString() });
+    notify(participants(e).filter((p) => p !== action.user), e.id, `${name(action.user)} sent a message.`);
+    return state;
+  }
+  if (action.type === "booking") {
+    const leg = e.legs.find((l) => l.id === action.leg);
+    if (!leg || ![leg.provider, leg.receiver].includes(action.user) || !["confirmed", "active", "partially settled"].includes(e.status) || !Number.isFinite(Date.parse(action.start)) || Date.parse(action.start) <= Date.now()) throw Error("Choose a future session time for an agreed exchange.");
+    state.bookings.push({ id: id(), exchange: e.id, leg: leg.id, start: action.start, timezone: action.timezone, place: action.place.trim(), status: "proposed", acceptedBy: [action.user] });
+    notify([leg.provider, leg.receiver].filter((p) => p !== action.user), e.id, `${name(action.user)} proposed a session time.`);
+    return state;
+  }
+  if (action.type === "acceptBooking" || action.type === "cancelBooking") {
+    const booking = state.bookings.find((b) => b.id === action.booking && b.exchange === e.id);
+    const leg = e.legs.find((l) => l.id === booking?.leg);
+    if (!booking || !leg || ![leg.provider, leg.receiver].includes(action.user) || !["proposed", "accepted"].includes(booking.status)) throw Error("This session time is no longer available.");
+    if (action.type === "cancelBooking") booking.status = "cancelled";
+    else {
+      if (!booking.acceptedBy.includes(action.user)) booking.acceptedBy.push(action.user);
+      if ([leg.provider, leg.receiver].every((p) => booking.acceptedBy.includes(p))) booking.status = "accepted";
+    }
+    notify([leg.provider, leg.receiver].filter((p) => p !== action.user), e.id, `Session time ${action.type === "cancelBooking" ? "cancelled" : "accepted"} by ${name(action.user)}.`);
+    return state;
+  }
+  if (action.type === "noShow") {
+    const booking = state.bookings.find((b) => b.id === action.booking && b.exchange === e.id);
+    const leg = e.legs.find((l) => l.id === booking?.leg);
+    if (!booking || !leg || ![leg.provider, leg.receiver].includes(action.user) || booking.status !== "accepted" || Date.now() < Date.parse(booking.start) + 15 * 60000) throw Error("No-show reports open 15 minutes after an accepted session time.");
+    booking.status = "no-show";
+    e.audit.push(`${name(action.user)} reported a no-show for ${leg.skill}. This is a participant report, not an independent finding.`);
+    notify([leg.provider, leg.receiver].filter((p) => p !== action.user), e.id, `${name(action.user)} reported a no-show.`);
+    return state;
+  }
+  if (action.type === "remindBooking") {
+    const booking = state.bookings.find((b) => b.id === action.booking && b.exchange === e.id);
+    const leg = e.legs.find((l) => l.id === booking?.leg);
+    if (!booking || !leg || booking.status !== "accepted" || booking.reminded || Date.parse(booking.start) - Date.now() > 86400000 || Date.parse(booking.start) < Date.now()) throw Error("No session reminder is due.");
+    booking.reminded = true;
+    notify([leg.provider, leg.receiver], e.id, `${leg.skill} session starts within 24 hours. Check the agreed time and place.`);
+    return state;
+  }
   if (action.type === "confirm") {
     if (e.status !== "proposed" || !participants(e).includes(action.user))
       throw Error("Confirmation is unavailable.");
+    if (e.expiresAt && Date.parse(e.expiresAt) < Date.now()) throw Error("This proposal expired. Find the match again to re-propose.");
     if (!e.confirmations.includes(action.user))
       e.confirmations.push(action.user);
     e.audit.push(
@@ -530,6 +682,7 @@ export function transition(input: State, action: Action): State {
     );
     if (participants(e).every((u) => e.confirmations.includes(u)))
       e.status = "confirmed";
+    notify(participants(e).filter((p) => p !== action.user), e.id, `${name(action.user)} confirmed the exchange.`);
   }
   if (action.type === "complete") {
     if (!["confirmed", "active", "partially settled"].includes(e.status))
@@ -539,6 +692,10 @@ export function transition(input: State, action: Action): State {
     if (e.amendments.some((a) => a.status === "pending"))
       throw Error("Confirm the pending amendment first.");
     const l = e.legs.find((l) => l.id === action.leg)!;
+    const acceptedBookings = state.bookings!.filter((b) => b.exchange === e.id && b.leg === l.id && b.status === "accepted");
+    const booked = action.booking ? acceptedBookings.find((b) => b.id === action.booking) : acceptedBookings[0];
+    if (action.booking && !booked) throw Error("Select an accepted session time.");
+    if (booked && Date.parse(booked.start) > Date.now()) throw Error("Record this session after its agreed start time.");
     const rem = remaining(state, e, l);
     if (rem <= 0) throw Error("This service is already fulfilled.");
     const blocked = outstanding(state, l.receiver).filter(
@@ -562,7 +719,7 @@ export function transition(input: State, action: Action): State {
       skill: l.skill,
       duration: l.duration,
       actual_duration: actual,
-      scheduled_time: l.availability,
+      scheduled_time: booked?.start || l.availability,
       notes: action.notes || "Completion recorded in the local demo.",
     });
     state.contributions.push({
@@ -578,6 +735,8 @@ export function transition(input: State, action: Action): State {
     e.audit.push(
       `${name(l.provider)} delivered ${minutes(actual)} of ${l.skill} to ${name(l.receiver)}.`,
     );
+    if (booked) booked.status = "completed";
+    notify(participants(e).filter((p) => p !== l.provider), e.id, `${name(l.provider)} recorded a completed ${l.skill} session.`);
     refresh(state, e);
   }
   if (action.type === "withdraw") {
@@ -727,6 +886,7 @@ export function transition(input: State, action: Action): State {
     e.audit.push(
       `Proposed amendment: ${l.skill}, ${l.sessions} to ${action.sessions} sessions. Completion held until all confirm.`,
     );
+    notify(participants(e), e.id, `Future ${l.skill} session count changed; everyone must review and confirm.`);
   }
   if (action.type === "confirmAmend") {
     const a = e.amendments.find((a) => a.status === "pending");
@@ -742,6 +902,7 @@ export function transition(input: State, action: Action): State {
       a.status = "applied";
       refresh(state, e);
     }
+    notify(participants(e).filter((p) => p !== action.user), e.id, `${name(action.user)} accepted changed exchange terms.`);
   }
   // Preserve actual provider identity when an accepted replacement performs an original debtor's service.
   if (
