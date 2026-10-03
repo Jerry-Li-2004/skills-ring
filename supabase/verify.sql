@@ -21,6 +21,8 @@ union all select 'exchange_participants', count(*) from public.exchange_particip
 union all select 'commitments', count(*) from public.commitments
 union all select 'sessions', count(*) from public.sessions
 union all select 'contributions', count(*) from public.contributions
+union all select 'completion_bonds', count(*) from public.completion_bonds
+union all select 'bond_ledger_entries', count(*) from public.bond_ledger_entries
 union all select 'evaluations', count(*) from public.evaluations
 union all select 'disputes', count(*) from public.disputes
 union all select 'withdrawals', count(*) from public.withdrawals
@@ -42,6 +44,6 @@ where schemaname = 'public'
     'offer_availability', 'need_availability', 'exchange_preferences', 'system_config',
     'reliability_history', 'matches', 'recommendation_rankings', 'recommendation_events',
     'exchanges', 'exchange_matches', 'exchange_participants', 'commitments', 'sessions',
-    'contributions', 'evaluations', 'disputes', 'withdrawals'
+    'contributions', 'completion_bonds', 'bond_ledger_entries', 'evaluations', 'disputes', 'withdrawals'
   )
 order by tablename;

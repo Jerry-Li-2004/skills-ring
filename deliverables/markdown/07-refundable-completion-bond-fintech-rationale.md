@@ -2,7 +2,7 @@
 
 ## Purpose and conclusion
 
-This document explains how a proposed **refundable completion bond** could give Skills-Ring a clearer financial-technology dimension. The bond is not part of the current product implementation. It is a potential extension for demonstrating how financial mechanisms can protect informal, non-monetary skill exchanges.
+This document explains how the simulated **refundable completion bond** gives Skills-Ring a clearer financial-technology dimension. The current hackathon implementation demonstrates the complete bond lifecycle without processing real money.
 
 The key conclusion is:
 
@@ -12,11 +12,11 @@ Skills would remain the primary source of value. Money would serve as limited pr
 
 ## Proposed mechanism
 
-Before an exchange begins, participants agree on a monetary **reference value** for each promised service. Each participant then provides a small refundable bond calculated from the value they are expected to deliver.
+Before an exchange begins, the platform calculates and discloses a standardized monetary **reference value** for each promised service from versioned configuration, the skill reference multiplier, session duration and session count. Each participant then provides a small refundable bond calculated from the value they are expected to deliver. Participants do not negotiate the figure separately: their existing confirmation of the complete exchange also accepts the disclosed reference value, fixed bond rule and resulting bond.
 
 The bond follows four basic states:
 
-1. **Calculated:** The platform determines the required bond from the agreed service value and risk rule.
+1. **Calculated:** The platform determines the required bond from the disclosed standardized service reference value and fixed risk rule.
 2. **Held:** The bond is reserved while the exchange remains active.
 3. **Returned:** Successful fulfillment releases the bond back to its owner.
 4. **Settled:** A withdrawal, dispute or default causes the agreed rule to determine how much is returned, held or transferred.
@@ -62,7 +62,7 @@ Alice and Bob agree to the following exchange:
 
 The example uses a 20% bond rate for demonstration.
 
-1. Alice and Bob confirm the services, reference values and bond rule.
+1. The platform discloses the service reference values and bond rule; Alice and Bob accept them in the same confirmation used for the complete exchange.
 2. Both bonds become held before performance begins.
 3. Alice completes the Python tutoring first.
 4. Bob withdraws before delivering the photography session.
@@ -78,7 +78,7 @@ This sequence demonstrates valuation, collateral, exposure, withdrawal, replacem
 
 The bond rule should be simple enough for participants and judges to understand:
 
-> Each participant posts a refundable bond equal to a fixed percentage of their agreed contribution value. A verified default may use that bond only to compensate the affected participant or fund an accepted replacement.
+> Each participant posts a refundable bond equal to a fixed percentage of the platform-disclosed reference value for their promised contribution. Everyone accepts the result in the existing exchange confirmation. A verified default may use that bond only to compensate the affected participant or fund an accepted replacement.
 
 The rule should be disclosed before confirmation and applied consistently across direct exchanges and multi-person rings.
 
@@ -113,7 +113,7 @@ Skills-Ring should therefore present the bond as a limited guarantee, not a prom
 
 For a hackathon prototype, the financial flow can be simulated without processing real money. The demonstration should visibly show:
 
-1. Participants agree on service reference values.
+1. The platform calculates and discloses standardized service reference values.
 2. The platform calculates each bond.
 3. Bonds move into a held state.
 4. One participant completes a service.
@@ -122,7 +122,7 @@ For a hackathon prototype, the financial flow can be simulated without processin
 7. A replacement or default rule is applied.
 8. The final ledger shows returned, transferred and unresolved amounts.
 
-Adding a deposit field alone is not sufficient. The value comes from demonstrating the complete sequence from valuation through failure and settlement.
+Adding a deposit field alone is not sufficient. The value comes from demonstrating the complete sequence from automated valuation through confirmation, failure and settlement.
 
 ## Suggested team positioning
 

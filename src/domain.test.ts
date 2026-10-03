@@ -11,6 +11,8 @@ import {
   imbalance,
   reliability,
   recommendations,
+  bondQuote,
+  exchangeBonds,
   type State,
   type Action,
 } from "./domain";
@@ -106,6 +108,50 @@ describe("matching and confirmation", () => {
     s = confirm(s);
     expect(s.exchanges[0].status).toBe("confirmed");
     expect(commitments(s).every((c) => c.status === "Proposed")).toBe(true);
+  });
+});
+
+describe("simulated refundable completion bonds", () => {
+  it("calculates disclosed bond terms and holds them in the existing confirmation round", () => {
+    let s = flow();
+    const e = s.exchanges[0];
+    const aliceLeg = e.legs.find((leg) => leg.provider === "alice")!;
+    expect(bondQuote(s, aliceLeg)).toMatchObject({ referenceValue: 400, rate: 0.2, amount: 80 });
+    expect(exchangeBonds(s, e.id).map((bond) => bond.status)).toEqual(["Calculated", "Calculated"]);
+    s = confirm(s);
+    expect(exchangeBonds(s, e.id).map((bond) => bond.status)).toEqual(["Held", "Held"]);
+    expect(s.bondLedger?.filter((entry) => entry.event === "HELD")).toHaveLength(2);
+  });
+
+  it("returns every held bond after all promised services settle", () => {
+    let s = confirm(flow());
+    s = complete(complete(s, "alice"), "alice");
+    s = complete(complete(s, "bob"), "bob");
+    expect(s.exchanges[0].status).toBe("settled");
+    expect(exchangeBonds(s, s.exchanges[0].id).every((bond) => bond.status === "Returned" && bond.returned_amount === bond.amount)).toBe(true);
+  });
+
+  it("returns fulfilled and innocent bonds while settling the defaulter bond to an affected contributor", () => {
+    let s = complete(confirm(flow("ring")), "alice");
+    const exchange = s.exchanges[0];
+    s = transition(s, { type: "withdraw", exchange: exchange.id, user: "charlie", reason: "Unavailable" });
+    expect(exchangeBonds(s, exchange.id).find((bond) => bond.owner === "alice")?.status).toBe("Returned");
+    expect(exchangeBonds(s, exchange.id).find((bond) => bond.owner === "charlie")?.status).toBe("Held");
+    s = transition(s, { type: "default", exchange: exchange.id });
+    const charlieBond = exchangeBonds(s, exchange.id).find((bond) => bond.owner === "charlie")!;
+    expect(charlieBond.status).toBe("Settled");
+    expect(charlieBond.applied_amount).toBe(charlieBond.amount);
+    expect(s.bondLedger?.find((entry) => entry.bond === charlieBond.id && entry.event === "SETTLED")?.recipient).toBe("alice");
+  });
+
+  it("returns a pre-performance withdrawal bond and holds a replacement bond after renewed consent", () => {
+    let s = withdraw(confirm(flow("ring")));
+    const exchange = s.exchanges[0];
+    s = transition(s, { type: "replacement", exchange: exchange.id, user: "david" });
+    for (const user of [...participants(exchange), "david"])
+      s = transition(s, { type: "reconfirm", exchange: exchange.id, user });
+    expect(exchangeBonds(s, exchange.id).find((bond) => bond.owner === "charlie")?.status).toBe("Returned");
+    expect(exchangeBonds(s, exchange.id).find((bond) => bond.owner === "david")?.status).toBe("Held");
   });
 });
 

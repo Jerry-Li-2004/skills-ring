@@ -271,3 +271,37 @@ Remaining: 2 hours of Tennis
 | `completed_value` | Amount of service completed |
 | `remaining_value` | Amount of service remaining |
 | `settled_at` | Settlement time |
+
+## 13. Simulated Completion Bond
+
+A Completion Bond is an optional, simulation-only risk-control record attached to one concrete service Commitment. It is not a transferable balance and does not establish the price of a skill. The platform derives the disclosed reference value from versioned configuration, the skill reference multiplier, session duration and session count; the existing all-party Exchange confirmation accepts the resulting fixed-percentage bond.
+
+| Field | Options or Description |
+|---|---|
+| `bond_id` | Stable bond ID |
+| `exchange_id` | Corresponding Exchange |
+| `exchange_leg_id` | Promised service leg protected by the bond |
+| `owner_id` | Participant responsible for that promised service |
+| `currency` | HKD in the current simulation |
+| `reference_value` | Disclosed simulation-only service reference value snapshot |
+| `bond_rate` | Fixed disclosed percentage used for calculation |
+| `bond_amount` | `reference_value × bond_rate` |
+| `status` | Calculated / Held / Returned / Settled |
+| `returned_amount` | Amount returned to the owner |
+| `applied_amount` | Amount applied to an accepted replacement or affected contributor |
+| `terms_version` | Version of the calculation terms |
+
+## 14. Bond Ledger Entry
+
+Bond events are append-only audit records. They must not be represented as spendable credits or silently rewritten when an Exchange changes.
+
+| Field | Options or Description |
+|---|---|
+| `entry_id` | Stable event ID |
+| `bond_id` | Corresponding Completion Bond |
+| `exchange_id` | Corresponding Exchange |
+| `event_type` | CALCULATED / HELD / RETURNED / SETTLED |
+| `amount` | Amount affected by the event |
+| `recipient_id` | Optional accepted replacement or affected contributor |
+| `reason` | Plain-language rule that produced the event |
+| `created_at` | Trusted event time |

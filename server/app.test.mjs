@@ -242,7 +242,9 @@ test("persists live exchange proposals, account confirmations, and completed ses
   db.exec("CREATE TABLE offers (offer_id TEXT PRIMARY KEY, user_id TEXT REFERENCES users(user_id)); CREATE TABLE needs (need_id TEXT PRIMARY KEY, user_id TEXT REFERENCES users(user_id));");
   const tables = {
     users: [{ user_id: "u2", name: "Second Member", status: "Active" }],
-    categories: [], skills: [{ skill_id: "s1", skill_name: "Python" }, { skill_id: "s2", skill_name: "Tennis" }], time_slots: [],
+    categories: [], skills: [{ skill_id: "s1", skill_name: "Python" }, { skill_id: "s2", skill_name: "Tennis" }],
+    skill_values: [{ skill_value_id: "sv1", skill_id: "s1", base_value: 1 }, { skill_value_id: "sv2", skill_id: "s2", base_value: 1 }],
+    system_config: [{ config_key: "bond_reference_hourly_hkd", config_value: "200" }, { config_key: "completion_bond_rate", config_value: "0.20" }], time_slots: [],
     offers: [
       { offer_id: "o-second", user_id: "u2", skill_id: "s2" },
     ],
@@ -250,10 +252,10 @@ test("persists live exchange proposals, account confirmations, and completed ses
       { need_id: "n-second", user_id: "u2", skill_id: "s1" },
     ],
     offer_availability: [], need_availability: [], reliability_history: [], current_user_reliability: [],
-    exchanges: [], exchange_legs: [], exchange_confirmations: [], exchange_participants: [], commitments: [], sessions: [], contributions: [],
+    exchanges: [], exchange_legs: [], exchange_confirmations: [], exchange_participants: [], commitments: [], sessions: [], contributions: [], completion_bonds: [], bond_ledger_entries: [],
   };
   let recommenderRuns = 0;
-  const keyFor = (table) => ({ users: "user_id", skills: "skill_id", offers: "offer_id", needs: "need_id", exchanges: "exchange_id", exchange_legs: "leg_id", exchange_confirmations: "user_id", exchange_participants: "user_id", commitments: "commitment_id", sessions: "session_id", contributions: "contribution_id" }[table]);
+  const keyFor = (table) => ({ users: "user_id", skills: "skill_id", offers: "offer_id", needs: "need_id", exchanges: "exchange_id", exchange_legs: "leg_id", exchange_confirmations: "user_id", exchange_participants: "user_id", commitments: "commitment_id", sessions: "session_id", contributions: "contribution_id", completion_bonds: "bond_id", bond_ledger_entries: "entry_id" }[table]);
   const supabase = createServer(async (req, res) => {
     const url = new URL(req.url, "http://supabase.test");
     const table = url.pathname.split("/").pop();
@@ -315,6 +317,14 @@ test("persists live exchange proposals, account confirmations, and completed ses
         { id: "o-second:n-first", offer: "o-second", need: "n-first", provider: "u2", receiver: account.userId, skill: "Tennis", duration: 60, sessions: 1, availability: "Saturday Afternoon", mode: "Online", location: "Anywhere", capacity: 1 },
       ],
       confirmations: [], status: "proposed", audit: ["Exchange proposed."], amendments: [],
+      bonds: [
+        { id: "bond-1", exchange: "exchange-live-test", leg: "o-first:n-second", owner: account.userId, currency: "HKD", reference_value: 200, rate: 0.2, amount: 40, status: "Calculated", returned_amount: 0, applied_amount: 0, terms_version: "simulated-hkd-v1" },
+        { id: "bond-2", exchange: "exchange-live-test", leg: "o-second:n-first", owner: "u2", currency: "HKD", reference_value: 200, rate: 0.2, amount: 40, status: "Calculated", returned_amount: 0, applied_amount: 0, terms_version: "simulated-hkd-v1" },
+      ],
+      bondLedger: [
+        { id: "bond-entry-1", bond: "bond-1", exchange: "exchange-live-test", event: "CALCULATED", amount: 40, reason: "Calculated for test.", created_at: new Date().toISOString() },
+        { id: "bond-entry-2", bond: "bond-2", exchange: "exchange-live-test", event: "CALCULATED", amount: 40, reason: "Calculated for test.", created_at: new Date().toISOString() },
+      ],
       createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86400000).toISOString(),
     };
     let response = await fetch(`${origin}/api/live/exchanges/${exchange.id}`, {
@@ -326,7 +336,7 @@ test("persists live exchange proposals, account confirmations, and completed ses
     assert.equal(tables.exchange_legs.length, 2);
     assert.equal(tables.exchange_participants.length, 2);
 
-    const confirmed = { ...exchange, status: "confirmed", confirmations: [account.userId] };
+    const confirmed = { ...exchange, status: "confirmed", confirmations: [account.userId], bonds: exchange.bonds.map((bond) => ({ ...bond, status: "Held" })), bondLedger: [...exchange.bondLedger, ...exchange.bonds.map((bond, index) => ({ id: `bond-held-${index}`, bond: bond.id, exchange: exchange.id, event: "HELD", amount: bond.amount, reason: "Held for test.", created_at: new Date().toISOString() }))] };
     response = await fetch(`${origin}/api/live/exchanges/${exchange.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json", Origin: origin, Cookie: cookie },
       body: JSON.stringify({ action: "confirm", exchange: confirmed }),

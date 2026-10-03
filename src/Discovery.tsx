@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowRight, Bookmark, CalendarDays, Check, ChevronDown, Clock3, MapPin, RotateCcw, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
-import { type Leg, type Person, type State, imbalance, library, minutes, name, outstanding, people, reliability } from "./domain";
+import { type Leg, type Person, type State, bondQuote, hkd, imbalance, library, minutes, name, outstanding, people, reliability } from "./domain";
 import "./discovery.css";
 
 type Route = { key: string; legs: Leg[] };
@@ -192,6 +192,11 @@ function Review({ route, state, user, onClose, onPropose }: { route: Route; stat
     <p><strong>Why this works:</strong> The listed skills, minimum level, available capacity, conditions and an availability slot align. Session count, length, meeting mode and place can be suggested here; every person must agree to changed terms.</p>
     <div className="discover-terms"><div><small>YOU GIVE</small><strong>{give.skill}</strong><span>{give.sessions} × {minutes(give.duration)}</span></div><ArrowRight size={18} /><div><small>YOU RECEIVE</small><strong>{receive.skill}</strong><span>{receive.sessions} × {minutes(receive.duration)}</span></div></div>
     {legs.map((l) => <section className="review-leg" key={l.id}><h3>{people[l.provider].name} → {people[l.receiver].name}: {l.skill}</h3><p>{l.sessions} × {minutes(l.duration)} · {l.mode} · {l.location} · {l.availability}</p>{step === "detail" && <div className="review-fields"><label>Sessions<input type="number" min="1" max={state.listings.find((x) => x.id === l.need)?.sessions || l.sessions} value={l.sessions} onChange={(e) => change(l.id, "sessions", Number(e.target.value))} /></label><label>Minutes<input type="number" min="15" max="180" step="15" value={l.duration} onChange={(e) => change(l.id, "duration", Number(e.target.value))} /></label><label>Mode<select value={l.mode} onChange={(e) => change(l.id, "mode", e.target.value)}><option>Online</option><option>Offline</option></select></label><label>General location<input value={l.location} onChange={(e) => change(l.id, "location", e.target.value)} maxLength={100} /></label><label>Availability<input value={l.availability} onChange={(e) => change(l.id, "availability", e.target.value)} maxLength={100} /></label></div>}</section>)}
+    <section className="bond-preview" aria-label="Refundable completion bond preview">
+      <div className="bond-preview-heading"><ShieldCheck size={21} /><div><h3>Refundable completion bonds</h3><p>The platform calculates one simulated HKD bond for each promised service. It is protection against non-performance, not the price of a skill.</p></div></div>
+      <div className="bond-preview-grid">{legs.map((l) => { const quote = bondQuote(state, l); return <div key={l.id}><span>{name(l.provider)} · {l.skill}</span><strong>{hkd(quote.amount)}</strong><small>{hkd(quote.referenceValue)} disclosed reference value × {Math.round(quote.rate * 100)}%</small></div>; })}</div>
+      <p className="simulation-note">Simulation only · No real funds are collected or held. Sending this proposal does not hold a bond; it becomes held only after everyone confirms once.</p>
+    </section>
     {imbalance(legs) && <p className="discover-warning">Potential imbalance: {legs.map((l) => `${name(l.provider)} ${minutes(l.sessions * l.duration)}`).join(" · ")}. All participants must accept these amounts.</p>}
     <p className="muted">Changes to count, duration, mode, location or availability are suggestions. They take effect only when every participant confirms; an existing proposal cannot silently change.</p>
     {error && <p className="discover-warning" role="alert">{error}</p>}

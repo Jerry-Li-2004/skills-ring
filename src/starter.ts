@@ -42,7 +42,7 @@ export function mergeStarterWorkspace(live: State, starter: StarterWorkspace | u
   const sample = starter.state;
   for (const exchange of sample.exchanges) exchange.status = proposalStatus(exchange);
   const merged = { ...live, starterAvailable: true };
-  for (const field of ["listings", "exchanges", "sessions", "contributions", "disputes", "evaluations", "withdrawals", "messages", "bookings", "notifications"] as const) {
+  for (const field of ["listings", "exchanges", "sessions", "contributions", "bonds", "bondLedger", "disputes", "evaluations", "withdrawals", "messages", "bookings", "notifications"] as const) {
     // Every field is a homogeneous array; the runtime key preserves its type.
     (merged as unknown as Record<string, unknown>)[field] = [...(live[field] || []), ...(sample[field] || [])];
   }

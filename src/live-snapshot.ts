@@ -10,6 +10,8 @@ export type LiveSnapshot = {
   users: LiveRow[];
   categories: LiveRow[];
   skills: LiveRow[];
+  skill_values?: LiveRow[];
+  system_config?: LiveRow[];
   time_slots: LiveRow[];
   offers: LiveRow[];
   needs: LiveRow[];
@@ -26,6 +28,8 @@ export type LiveSnapshot = {
   exchange_confirmations: LiveRow[];
   sessions: LiveRow[];
   contributions: LiveRow[];
+  completion_bonds?: LiveRow[];
+  bond_ledger_entries?: LiveRow[];
 };
 
 function text(row: LiveRow, key: string, fallback = "") {
@@ -62,6 +66,12 @@ export function liveSkillCatalog(snapshot: Pick<LiveSnapshot, "categories" | "sk
 export function liveSnapshotToState(snapshot: LiveSnapshot): State {
   const categories = new Map(snapshot.categories.map((row) => [text(row, "category_id"), text(row, "category_name")]));
   const skills = new Map(snapshot.skills.map((row) => [text(row, "skill_id"), row]));
+  const skillValueMultipliers = Object.fromEntries((snapshot.skill_values || []).flatMap((row) => {
+    const skill = skills.get(text(row, "skill_id"));
+    const value = Number(row.base_value);
+    return skill && Number.isFinite(value) ? [[text(skill, "skill_name"), value]] : [];
+  }));
+  const config = new Map((snapshot.system_config || []).map((row) => [text(row, "config_key"), Number(row.config_value)]));
   const slots = new Map(snapshot.time_slots.map((row) => [text(row, "slot_id"), text(row, "slot_name")]));
   const offerSlots = new Map<string, string[]>();
   for (const row of snapshot.offer_availability) {
@@ -294,6 +304,30 @@ export function liveSnapshotToState(snapshot: LiveSnapshot): State {
     duration: integer(row, "duration_minutes", 30),
     created_at: text(row, "created_at"),
   }] : []);
+  const bonds = (snapshot.completion_bonds || []).flatMap((row) => exchangeMap.has(text(row, "exchange_id")) ? [{
+    id: text(row, "bond_id"),
+    exchange: text(row, "exchange_id"),
+    leg: text(row, "exchange_leg_id"),
+    owner: text(row, "owner_id") as Person,
+    currency: "HKD" as const,
+    reference_value: Number(row.reference_value) || 0,
+    rate: Number(row.bond_rate) || 0,
+    amount: Number(row.bond_amount) || 0,
+    status: text(row, "status", "Calculated") as "Calculated" | "Held" | "Returned" | "Settled",
+    returned_amount: Number(row.returned_amount) || 0,
+    applied_amount: Number(row.applied_amount) || 0,
+    terms_version: text(row, "terms_version", "simulated-hkd-v1"),
+  }] : []);
+  const bondLedger = (snapshot.bond_ledger_entries || []).flatMap((row) => exchangeMap.has(text(row, "exchange_id")) ? [{
+    id: text(row, "entry_id"),
+    bond: text(row, "bond_id"),
+    exchange: text(row, "exchange_id"),
+    event: text(row, "event_type") as "CALCULATED" | "HELD" | "RETURNED" | "SETTLED",
+    amount: Number(row.amount) || 0,
+    ...(text(row, "recipient_id") ? { recipient: text(row, "recipient_id") as Person } : {}),
+    reason: text(row, "reason"),
+    created_at: text(row, "created_at"),
+  }] : []);
 
   const saved = (field: string) => (snapshot.exchanges || []).flatMap(row => {
     const value = (details(row).state as Record<string, unknown> | undefined)?.[field];
@@ -309,6 +343,8 @@ export function liveSnapshotToState(snapshot: LiveSnapshot): State {
     exchanges,
     sessions,
     contributions,
+    bonds,
+    bondLedger,
     disputes: saved("disputes"),
     evaluations: saved("evaluations"),
     withdrawals: saved("withdrawals"),
@@ -317,5 +353,8 @@ export function liveSnapshotToState(snapshot: LiveSnapshot): State {
     notifications: saved("notifications"),
     liveStats: stats,
     liveMatches,
+    skillValueMultipliers,
+    referenceHourlyHkd: config.get("bond_reference_hourly_hkd") || 200,
+    completionBondRate: config.get("completion_bond_rate") || 0.2,
   }, snapshot.starter, snapshot.liveUserId);
 }

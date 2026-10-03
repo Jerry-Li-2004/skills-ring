@@ -71,6 +71,16 @@
 .discover-review .review-leg h3 { margin:0 0 3px; font-size:1rem; }
 .discover-review .review-leg p { margin:0 0 10px; }
 .review-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:9px; }
+.bond-preview { margin:16px 0; padding:17px; border:1px solid #d9def1; border-radius:15px; background:linear-gradient(135deg,#f7f8ff,#f0f7ff); }
+.bond-preview-heading { display:flex; align-items:flex-start; gap:11px; }
+.bond-preview-heading>svg { flex:none; color:#4e5cc3; }
+.bond-preview h3,.bond-preview p { margin:0; }
+.bond-preview-heading p { margin-top:4px; color:#59647d; }
+.bond-preview-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:9px; margin-top:14px; }
+.bond-preview-grid>div { display:flex; flex-direction:column; gap:3px; padding:12px; border:1px solid #e0e4f0; border-radius:12px; background:#fff; }
+.bond-preview-grid span,.bond-preview-grid small { color:#64708b; font-size:12px; }
+.bond-preview-grid strong { color:#151b3c; font-size:20px; }
+.bond-preview .simulation-note { margin-top:12px; }
 .saved-unavailable { padding:16px; margin:10px 0 18px; border:1px solid #e2d5b1; border-radius:13px; background:#fffaf0; }
 .saved-unavailable h3 { margin:0 0 8px; font-size:1rem; }
 .saved-unavailable>div { display:flex; justify-content:space-between; gap:10px; padding:5px 0; }

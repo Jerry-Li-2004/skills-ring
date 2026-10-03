@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findMatches, transition } from "./domain";
+import { bondQuote, exchangeBonds, findMatches, transition } from "./domain";
 import { liveSkillCatalog, liveSnapshotToState, type LiveSnapshot } from "./live-snapshot";
 
 describe("live recommendation snapshot", () => {
@@ -25,6 +25,8 @@ describe("live recommendation snapshot", () => {
         { skill_id: "s1", category_id: "c1", skill_name: "Python" },
         { skill_id: "s2", category_id: "c1", skill_name: "Tennis" },
       ],
+      skill_values: [{ skill_id: "s1", base_value: 1.5 }, { skill_id: "s2", base_value: 1 }],
+      system_config: [{ config_key: "bond_reference_hourly_hkd", config_value: "200" }, { config_key: "completion_bond_rate", config_value: "0.20" }],
       time_slots: [{ slot_id: "slot1", slot_name: "Saturday Afternoon" }],
       offers: [
         { offer_id: "o1", user_id: "u1", skill_id: "s1", status: "Active", duration_minutes: 90, max_sessions: 2, mode: "Either", location: "Anywhere" },
@@ -47,7 +49,9 @@ describe("live recommendation snapshot", () => {
     expect(route[0].duration).toBe(60);
     expect(route[0].mode).toBe("Online");
     expect(findMatches(state, "u2")).toEqual([]);
-    expect(() => transition(state, { type: "propose", legs: route })).not.toThrow();
+    const proposed = transition(state, { type: "propose", legs: route });
+    expect(bondQuote(state, route[0])).toMatchObject({ referenceValue: 300, amount: 60 });
+    expect(exchangeBonds(proposed, proposed.exchanges[0].id)).toHaveLength(2);
     snapshot.recommendation_rankings = [];
     const unranked = liveSnapshotToState(snapshot);
     expect(findMatches(unranked, "u1")).toEqual([]);
