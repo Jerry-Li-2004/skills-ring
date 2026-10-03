@@ -62,6 +62,9 @@ import {
   reliability,
   contributionSettled,
   recommendations,
+  exchangeBonds,
+  bondQuote,
+  hkd,
   id,
 } from "./domain";
 import "./styles.css";
@@ -1111,8 +1114,8 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
               <p>
                 Profiles and live exchanges are saved in Supabase. The example
                 workspace uses fictional participants and browser storage; dispute
-                administration in the demo is simulated. There are no payments or
-                transferable credits.
+                administration and completion bonds in the demo are simulated.
+                There are no real payments, safeguarded funds, or transferable credits.
               </p>
             </div>
           </div>
@@ -1672,6 +1675,8 @@ function ExchangeDetails({
   const revise = (legId: string, field: keyof Leg, value: string | number) => setRevisionLegs((legs) => legs.map((l) => l.id === legId ? { ...l, [field]: value } : l));
   const pending = e.amendments.find((a) => a.status === "pending");
   const sessions = state.sessions.filter((s) => s.exchange === e.id);
+  const bonds = exchangeBonds(state, e.id);
+  const bondLedger = (state.bondLedger || []).filter((entry) => entry.exchange === e.id).sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
   const canComplete = ["confirmed", "active", "partially settled"].includes(
     e.status,
   );
@@ -1690,7 +1695,7 @@ function ExchangeDetails({
       </div>
       <ExchangeJourney status={e.status} />
       <div className="tabs">
-        {["Overview", "Conversation & schedule", "Sessions & trust", "Changes & recovery", "Activity"].map(
+        {["Overview", "Bond protection", "Conversation & schedule", "Sessions & trust", "Changes & recovery", "Activity"].map(
           (t) => (
             <button
               key={t}
@@ -1797,6 +1802,7 @@ function ExchangeDetails({
             <section className="confirmation-panel">
               <h3>Everyone agrees before anything begins</h3>
               {e.expiresAt && <p>Proposal expires {new Date(e.expiresAt).toLocaleString()}.</p>}
+              <p>One confirmation accepts the complete service route, the automatically calculated reference values, and the simulated refundable bonds shown under Bond protection.</p>
               <button className="button" onClick={() => { setRevisionLegs(e.legs.map((l) => ({ ...l }))); setRevisionOpen(!revisionOpen); }}>{revisionOpen ? "Close changes" : "Suggest changed terms"}</button>
               {revisionOpen && <div className="proposal-revision"><p>Updating any term clears prior confirmations. Every participant will review the full route again.</p>{revisionLegs.map((l) => <div className="review-leg" key={l.id}><strong>{name(l.provider)} gives {l.skill} to {name(l.receiver)}</strong><div className="review-fields"><label>Sessions<input type="number" min="1" max={state.listings.find((x) => x.id === l.need)?.sessions || l.sessions} value={l.sessions} onChange={(ev) => revise(l.id, "sessions", Number(ev.target.value))} /></label><label>Minutes<input type="number" min="15" max="180" step="15" value={l.duration} onChange={(ev) => revise(l.id, "duration", Number(ev.target.value))} /></label><label>Mode<select value={l.mode} onChange={(ev) => revise(l.id, "mode", ev.target.value)}><option>Online</option><option>Offline</option></select></label><label>Location<input value={l.location} onChange={(ev) => revise(l.id, "location", ev.target.value)} /></label><label>Availability<input value={l.availability} onChange={(ev) => revise(l.id, "availability", ev.target.value)} /></label></div></div>)}<button className="button primary" onClick={() => { if (act({ type: "reviseProposal", exchange: e.id, user, legs: revisionLegs })) setRevisionOpen(false); }}>Send changed proposal</button></div>}
               <p>
@@ -1867,9 +1873,25 @@ function ExchangeDetails({
           )}
           <p className="simulation-note">
             Local demonstration · Session recording simulates participant
-            attestation. No service is independently verified.
+            attestation. No service is independently verified. Bond amounts are
+            simulated HKD; no real funds are collected or held.
           </p>
         </>
+      )}
+      {tab === "Bond protection" && (
+        <section className="bond-panel">
+          <div className="bond-panel-intro">
+            <ShieldCheck size={24} />
+            <div><h3>Refundable completion bonds</h3><p>Each promised service receives a platform-calculated reference value. The fixed percentage below limits non-performance exposure; it is not a price for the skill.</p></div>
+          </div>
+          {bonds.length ? <div className="bond-list">{bonds.map((bond) => { const leg = e.legs.find((candidate) => candidate.id === bond.leg); return <article className="bond-card" key={bond.id}>
+            <div><span className="eyebrow">{bond.status}</span><h3>{name(bond.owner)} · {leg?.skill || "Original service"}</h3><p>{hkd(bond.reference_value)} reference value × {Math.round(bond.rate * 100)}%</p></div>
+            <strong>{hkd(bond.amount)}</strong>
+            <dl><div><dt>Returned</dt><dd>{hkd(bond.returned_amount)}</dd></div><div><dt>Applied</dt><dd>{hkd(bond.applied_amount)}</dd></div></dl>
+          </article>; })}</div> : <Empty title="No simulated bond" text="This exchange predates completion bonds or has no calculated bond record." />}
+          <div className="bond-ledger"><h3>Bond ledger</h3>{bondLedger.length ? bondLedger.map((entry) => <div key={entry.id} className="bond-ledger-row"><Badge tone={entry.event === "RETURNED" ? "green" : "yellow"}>{entry.event}</Badge><div><strong>{hkd(entry.amount)}</strong><p>{entry.reason}</p>{entry.recipient && <small>Recipient: {name(entry.recipient)}</small>}</div><time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time></div>) : <p className="muted">No bond events yet.</p>}</div>
+          <p className="simulation-note">Simulation only · No real funds are processed. A production version would require regulated custody or payment infrastructure and specialist review.</p>
+        </section>
       )}
       {tab === "Conversation & schedule" && <Coordination e={e} state={state} user={user} act={act} />}
       {tab === "Sessions & trust" && (
@@ -2005,6 +2027,7 @@ function ExchangeDetails({
                       .join(" · ")}
                     .
                   </p>
+                  {(() => { const leg = e.legs.find((candidate) => candidate.id === pending.leg)!; const currentBond = bonds.find((bond) => bond.leg === leg.id && bond.owner === leg.provider && bond.status === "Held"); const quote = bondQuote(state, { ...leg, sessions: pending.after }); return currentBond ? <p>Simulated bond: {hkd(currentBond.amount)} → {hkd(quote.amount)}. Accepting this amendment also accepts the automatically recalculated bond.</p> : null; })()}
                 </div>
                 <div className="button-row">
                   {participants(e).map((p) => (

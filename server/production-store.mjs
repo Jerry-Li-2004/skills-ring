@@ -4,7 +4,7 @@ import { supabaseRequest, fetchSupabaseTable } from "./app.mjs";
 import { transition, participants, library } from "./generated/domain.mjs";
 import { liveSnapshotToState } from "./generated/live-snapshot.mjs";
 
-const TABLES = ["users", "categories", "skills", "time_slots", "offers", "needs", "offer_availability", "need_availability", "reliability_history", "current_user_reliability", "exchanges", "exchange_matches", "matches", "recommendation_rankings", "exchange_participants", "exchange_legs", "exchange_confirmations", "sessions", "contributions"];
+const TABLES = ["users", "categories", "skills", "skill_values", "system_config", "time_slots", "offers", "needs", "offer_availability", "need_availability", "reliability_history", "current_user_reliability", "exchanges", "exchange_matches", "matches", "recommendation_rankings", "exchange_participants", "exchange_legs", "exchange_confirmations", "sessions", "contributions", "completion_bonds", "bond_ledger_entries"];
 const ACTIONS = new Set(["propose", "confirm", "decline", "cancelProposal", "reviseProposal", "expireProposal", "message", "booking", "acceptBooking", "cancelBooking", "noShow", "remindBooking", "complete", "withdraw", "replacement", "reconfirm", "amend", "confirmAmend", "dispute", "evaluate"]);
 
 export function createProductionStore({ url, key }) {
@@ -19,7 +19,7 @@ export function createProductionStore({ url, key }) {
       if (before[0].revision !== after[0].revision) continue;
       if (!internal) {
         const allowed = new Set(rows.exchange_participants.filter(row => row.user_id === account.userId).map(row => row.exchange_id));
-        for (const table of ["exchanges", "exchange_matches", "exchange_participants", "exchange_legs", "exchange_confirmations", "sessions", "contributions"]) rows[table] = rows[table].filter(row => allowed.has(row.exchange_id));
+        for (const table of ["exchanges", "exchange_matches", "exchange_participants", "exchange_legs", "exchange_confirmations", "sessions", "contributions", "completion_bonds", "bond_ledger_entries"]) rows[table] = rows[table].filter(row => allowed.has(row.exchange_id));
         rows.recommendation_rankings = rows.recommendation_rankings.filter(row => row.target_user_id === account.userId);
         rows.reliability_history = [];
         for (const row of rows.exchanges) {
@@ -83,7 +83,21 @@ export function createProductionStore({ url, key }) {
       const oldId = exchange.id;
       if (action.type === "propose") {
         exchange.id = randomUUID();
-        exchange.legs = exchange.legs.map((leg, index) => ({ ...leg, id: `${exchange.id}:${index}` }));
+        const oldLegs = exchange.legs;
+        exchange.legs = oldLegs.map((leg, index) => ({ ...leg, id: `${exchange.id}:${index}` }));
+        const legIds = new Map(oldLegs.map((leg, index) => [leg.id, exchange.legs[index].id]));
+        const bondIds = new Map();
+        for (const bond of next.bonds || []) if (bond.exchange === oldId) {
+          const previousBondId = bond.id;
+          bond.exchange = exchange.id;
+          bond.leg = legIds.get(bond.leg) || bond.leg;
+          bond.id = `bond:${exchange.id}:${bond.leg}:${bond.owner}`.slice(0, 240);
+          bondIds.set(previousBondId, bond.id);
+        }
+        for (const entry of next.bondLedger || []) if (entry.exchange === oldId) {
+          entry.exchange = exchange.id;
+          entry.bond = bondIds.get(entry.bond) || entry.bond;
+        }
       }
       exchangeId = exchange.id;
       const serverState = {};
@@ -91,6 +105,8 @@ export function createProductionStore({ url, key }) {
         serverState[field] = (next[field] || []).filter(row => row.exchange === oldId || (field === "evaluations" && next.sessions.some(s => s.id === row.session && s.exchange === exchangeId))).map(row => row.exchange ? { ...row, exchange: exchangeId } : row);
       }
       exchange.serverState = serverState;
+      exchange.bonds = (next.bonds || []).filter(bond => bond.exchange === exchangeId);
+      exchange.bondLedger = (next.bondLedger || []).filter(entry => entry.exchange === exchangeId);
       await transact(data.revision, write => save(account, exchange, next.sessions.filter(s => s.exchange === exchangeId), next.contributions.filter(c => c.exchange === exchangeId), action.type, write));
       return { exchange: { exchangeId } };
     },

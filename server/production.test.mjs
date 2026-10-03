@@ -28,6 +28,8 @@ test("snapshot hides other members' exchanges, sessions, and rankings", async t 
       exchanges: [{ exchange_id: "mine" }, { exchange_id: "private" }],
       exchange_participants: [{ exchange_id: "mine", user_id: "usr_me" }, { exchange_id: "private", user_id: "usr_other" }],
       sessions: [{ exchange_id: "private" }, { exchange_id: "mine" }],
+      completion_bonds: [{ exchange_id: "private" }, { exchange_id: "mine" }],
+      bond_ledger_entries: [{ exchange_id: "private" }, { exchange_id: "mine" }],
       recommendation_rankings: [{ target_user_id: "usr_me" }, { target_user_id: "usr_other" }],
     };
     return Response.json(rows[table] || []);
@@ -36,6 +38,8 @@ test("snapshot hides other members' exchanges, sessions, and rankings", async t 
   const data = await store.snapshot({ userId: "usr_me" });
   assert.deepEqual(data.exchanges, [{ exchange_id: "mine" }]);
   assert.deepEqual(data.sessions, [{ exchange_id: "mine" }]);
+  assert.deepEqual(data.completion_bonds, [{ exchange_id: "mine" }]);
+  assert.deepEqual(data.bond_ledger_entries, [{ exchange_id: "mine" }]);
   assert.equal(data.recommendation_rankings.length, 1);
 });
 

@@ -60,6 +60,17 @@ export function createStarterStore(request) {
         exchange.id = `starter_${account.userId}_${randomUUID()}`;
         exchange.title = `Example · ${exchange.title}`;
         for (const notification of next.notifications || []) if (notification.exchange === oldId) notification.exchange = exchange.id;
+        const bondIds = new Map();
+        for (const bond of next.bonds || []) if (bond.exchange === oldId) {
+          const previousBondId = bond.id;
+          bond.exchange = exchange.id;
+          bond.id = `bond:${exchange.id}:${bond.leg}:${bond.owner}`.slice(0, 240);
+          bondIds.set(previousBondId, bond.id);
+        }
+        for (const entry of next.bondLedger || []) if (entry.exchange === oldId) {
+          entry.exchange = exchange.id;
+          entry.bond = bondIds.get(entry.bond) || entry.bond;
+        }
         exchangeId = exchange.id;
       }
       await save(account, row, next);

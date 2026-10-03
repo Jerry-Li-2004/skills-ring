@@ -21,6 +21,8 @@ const LIVE_TABLES = [
   "users",
   "categories",
   "skills",
+  "skill_values",
+  "system_config",
   "time_slots",
   "offers",
   "needs",
@@ -37,6 +39,8 @@ const LIVE_TABLES = [
   "exchange_confirmations",
   "sessions",
   "contributions",
+  "completion_bonds",
+  "bond_ledger_entries",
 ];
 const LEVELS = ["Beginner", "Intermediate", "Advanced", "Expert"];
 const RECOMMENDER_SCRIPT = fileURLToPath(new URL("../raw-database/main.py", import.meta.url));
@@ -475,9 +479,13 @@ export function createAuthServer({
       prefer: "resolution=merge-duplicates,return=minimal",
     });
 
-    const skills = await fetchSupabaseTable({ url: liveUrl, key: supabaseKey, table: "skills" });
-    const offers = await fetchSupabaseTable({ url: liveUrl, key: supabaseKey, table: "offers" });
-    const needs = await fetchSupabaseTable({ url: liveUrl, key: supabaseKey, table: "needs" });
+    const [skills, skillValues, systemConfig, offers, needs] = await Promise.all([
+      fetchSupabaseTable({ url: liveUrl, key: supabaseKey, table: "skills" }),
+      fetchSupabaseTable({ url: liveUrl, key: supabaseKey, table: "skill_values" }),
+      fetchSupabaseTable({ url: liveUrl, key: supabaseKey, table: "system_config" }),
+      fetchSupabaseTable({ url: liveUrl, key: supabaseKey, table: "offers" }),
+      fetchSupabaseTable({ url: liveUrl, key: supabaseKey, table: "needs" }),
+    ]);
     const legRows = legs.map((leg, index) => {
       const offer = offers.find((row) => row.offer_id === leg.offer);
       const need = needs.find((row) => row.need_id === leg.need);
@@ -511,6 +519,89 @@ export function createAuthServer({
       prefer: "resolution=merge-duplicates,return=minimal",
     });
 
+    const config = new Map(systemConfig.map(row => [row.config_key, Number(row.config_value)]));
+    const referenceHourlyHkd = config.get("bond_reference_hourly_hkd") || 200;
+    const completionBondRate = config.get("completion_bond_rate") || 0.2;
+    const roundMoney = value => Math.round((value + Number.EPSILON) * 100) / 100;
+    const suppliedBonds = Array.isArray(rawExchange.bonds) ? rawExchange.bonds : [];
+    const currentBondRows = legRows.map(leg => {
+      const multiplier = Number(skillValues.find(row => row.skill_id === leg.skill_id && !row.effective_to)?.base_value) || 1;
+      const referenceValue = roundMoney(referenceHourlyHkd * multiplier * (leg.duration_minutes / 60) * leg.total_sessions);
+      const amount = roundMoney(referenceValue * completionBondRate);
+      const supplied = suppliedBonds.find(bond => bond.leg === leg.leg_id && bond.owner === leg.provider_id);
+      if (!supplied || supplied.currency !== "HKD" || supplied.reference_value !== referenceValue || supplied.rate !== completionBondRate || supplied.amount !== amount || !["Calculated", "Held", "Returned", "Settled"].includes(supplied.status))
+        throw new Error("The simulated completion bond terms are invalid or out of date.");
+      return {
+        bond_id: supplied.id,
+        exchange_id: exchangeId,
+        exchange_leg_id: leg.leg_id,
+        owner_id: leg.provider_id,
+        currency: "HKD",
+        reference_value: referenceValue,
+        bond_rate: completionBondRate,
+        bond_amount: amount,
+        status: supplied.status,
+        returned_amount: Number(supplied.returned_amount) || 0,
+        applied_amount: Number(supplied.applied_amount) || 0,
+        terms_version: supplied.terms_version || "simulated-hkd-v1",
+        updated_at: now,
+      };
+    });
+    const currentBondIds = new Set(currentBondRows.map(row => row.bond_id));
+    const historicalBondRows = suppliedBonds.filter(bond => !currentBondIds.has(bond.id)).map(bond => {
+      if (!legRows.some(leg => leg.leg_id === bond.leg) || ![...participants, rawExchange.recovery?.withdrawn].includes(bond.owner) || !["Returned", "Settled"].includes(bond.status))
+        throw new Error("The historical simulated completion bond is invalid.");
+      return {
+        bond_id: bond.id,
+        exchange_id: exchangeId,
+        exchange_leg_id: bond.leg,
+        owner_id: bond.owner,
+        currency: "HKD",
+        reference_value: Number(bond.reference_value) || 0,
+        bond_rate: Number(bond.rate) || completionBondRate,
+        bond_amount: Number(bond.amount) || 0,
+        status: bond.status,
+        returned_amount: Number(bond.returned_amount) || 0,
+        applied_amount: Number(bond.applied_amount) || 0,
+        terms_version: bond.terms_version || "simulated-hkd-v1",
+        updated_at: now,
+      };
+    });
+    const bondRows = [...currentBondRows, ...historicalBondRows];
+    await write({
+      url: liveUrl,
+      key: supabaseKey,
+      table: "completion_bonds",
+      method: "POST",
+      body: bondRows,
+      prefer: "resolution=merge-duplicates,return=minimal",
+    });
+    const suppliedLedger = Array.isArray(rawExchange.bondLedger) ? rawExchange.bondLedger : [];
+    const bondIds = new Set(bondRows.map(row => row.bond_id));
+    const ledgerRows = suppliedLedger.map(entry => {
+      if (!bondIds.has(entry.bond) || entry.exchange !== exchangeId || !["CALCULATED", "HELD", "RETURNED", "SETTLED"].includes(entry.event) || !Number.isFinite(Number(entry.amount)))
+        throw new Error("The simulated completion bond ledger is invalid.");
+      if (entry.recipient && ![...participants, rawExchange.recovery?.replacement].includes(entry.recipient)) throw new Error("The bond recipient is not part of this exchange.");
+      return {
+        entry_id: entry.id,
+        bond_id: entry.bond,
+        exchange_id: exchangeId,
+        event_type: entry.event,
+        amount: Number(entry.amount),
+        recipient_id: entry.recipient || null,
+        reason: String(entry.reason || "").slice(0, 1000),
+        created_at: entry.created_at || now,
+      };
+    });
+    if (ledgerRows.length) await write({
+      url: liveUrl,
+      key: supabaseKey,
+      table: "bond_ledger_entries",
+      method: "POST",
+      body: ledgerRows,
+      prefer: "resolution=merge-duplicates,return=minimal",
+    });
+
     if (actionType === "reviseProposal") {
       await write({ url: liveUrl, key: supabaseKey, table: "exchange_confirmations", method: "DELETE", query: { exchange_id: `eq.${exchangeId}` }, prefer: "return=minimal" });
     }
@@ -525,7 +616,25 @@ export function createAuthServer({
         key: supabaseKey,
         table: "exchange_confirmations",
         method: "POST",
-        body: { exchange_id: exchangeId, user_id: account.userId, confirmed_at: now },
+        body: {
+          exchange_id: exchangeId,
+          user_id: account.userId,
+          confirmed_at: now,
+          terms_hash: createHash("sha256").update(JSON.stringify({
+            legs: legRows.map(({ updated_at, ...leg }) => leg),
+            bonds: currentBondRows.map(bond => ({
+              bond_id: bond.bond_id,
+              exchange_leg_id: bond.exchange_leg_id,
+              owner_id: bond.owner_id,
+              currency: bond.currency,
+              reference_value: bond.reference_value,
+              bond_rate: bond.bond_rate,
+              bond_amount: bond.bond_amount,
+              terms_version: bond.terms_version,
+            })),
+          })).digest("hex"),
+          bond_terms_version: "simulated-hkd-v1",
+        },
         prefer: "resolution=merge-duplicates,return=minimal",
       });
     }
@@ -546,6 +655,7 @@ export function createAuthServer({
 
     for (const leg of legRows) {
       const commitmentId = `commit_${exchangeId}_${leg.leg_id}`.slice(0, 240);
+      const bond = currentBondRows.find(row => row.exchange_leg_id === leg.leg_id && row.owner_id === leg.provider_id);
       await write({
         url: liveUrl,
         key: supabaseKey,
@@ -560,6 +670,7 @@ export function createAuthServer({
           skill_id: leg.skill_id,
           duration_minutes: leg.duration_minutes,
           total_sessions: leg.total_sessions,
+          value_per_session_snapshot: roundMoney(bond.reference_value / leg.total_sessions),
           status: status === "Proposed" ? "Proposed" : status === "Settled" ? "Settled" : status === "Disputed" ? "Disputed" : status === "Defaulted" ? "Defaulted" : "Active",
           updated_at: now,
         },

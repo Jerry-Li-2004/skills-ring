@@ -162,6 +162,31 @@ export type Contribution = {
   duration: number;
   created_at: string;
 };
+export type BondStatus = "Calculated" | "Held" | "Returned" | "Settled";
+export type CompletionBond = {
+  id: string;
+  exchange: string;
+  leg: string;
+  owner: Person;
+  currency: "HKD";
+  reference_value: number;
+  rate: number;
+  amount: number;
+  status: BondStatus;
+  returned_amount: number;
+  applied_amount: number;
+  terms_version: string;
+};
+export type BondLedgerEntry = {
+  id: string;
+  bond: string;
+  exchange: string;
+  event: "CALCULATED" | "HELD" | "RETURNED" | "SETTLED";
+  amount: number;
+  recipient?: Person;
+  reason: string;
+  created_at: string;
+};
 export type Commitment = {
   id: string;
   exchange: string;
@@ -200,6 +225,8 @@ export type State = {
   exchanges: Exchange[];
   sessions: Session[];
   contributions: Contribution[];
+  bonds?: CompletionBond[];
+  bondLedger?: BondLedgerEntry[];
   disputes: Dispute[];
   evaluations: Evaluation[];
   withdrawals: { exchange: string; user: Person; reason: string }[];
@@ -208,7 +235,13 @@ export type State = {
   notifications?: { id: string; user: Person; exchange: string; text: string; createdAt: string; read: boolean }[];
   liveStats?: Record<string, { reliability: number; coldStart: boolean; services: number }>;
   liveMatches?: Record<Person, Leg[][]>;
+  skillValueMultipliers?: Record<string, number>;
+  referenceHourlyHkd?: number;
+  completionBondRate?: number;
 };
+export const DEFAULT_REFERENCE_HOURLY_HKD = 200;
+export const DEFAULT_COMPLETION_BOND_RATE = 0.2;
+export const COMPLETION_BOND_TERMS_VERSION = "simulated-hkd-v1";
 export const id = () => crypto.randomUUID();
 export const name = (p: Person) => (people[p]?.name || p).split(" ")[0];
 export const participants = (e: Exchange) => [
@@ -216,6 +249,125 @@ export const participants = (e: Exchange) => [
 ];
 export const minutes = (n: number) =>
   n % 60 === 0 ? `${n / 60} hr` : `${n} min`;
+const money = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
+export const hkd = (amount: number) => new Intl.NumberFormat("en-HK", {
+  style: "currency",
+  currency: "HKD",
+  maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+}).format(amount);
+export function bondQuote(state: State, leg: Leg) {
+  const hourly = state.referenceHourlyHkd ?? DEFAULT_REFERENCE_HOURLY_HKD;
+  const rate = state.completionBondRate ?? DEFAULT_COMPLETION_BOND_RATE;
+  const multiplier = state.skillValueMultipliers?.[leg.skill] ?? 1;
+  const referenceValue = money(hourly * multiplier * (leg.duration / 60) * leg.sessions);
+  return {
+    referenceValue,
+    rate,
+    amount: money(referenceValue * rate),
+    multiplier,
+    termsVersion: COMPLETION_BOND_TERMS_VERSION,
+  };
+}
+export const exchangeBonds = (state: State, exchange: string) =>
+  (state.bonds || []).filter((bond) => bond.exchange === exchange);
+
+function recordBondEvent(state: State, bond: CompletionBond, event: BondLedgerEntry["event"], amount: number, reason: string, recipient?: Person) {
+  state.bondLedger!.push({
+    id: id(), bond: bond.id, exchange: bond.exchange, event, amount: money(amount),
+    ...(recipient ? { recipient } : {}), reason, created_at: new Date().toISOString(),
+  });
+}
+function calculateBonds(state: State, exchange: Exchange) {
+  state.bonds ??= [];
+  state.bondLedger ??= [];
+  for (const leg of exchange.legs) {
+    const current = exchangeBonds(state, exchange.id).find((bond) => bond.leg === leg.id && bond.owner === leg.provider && bond.status === "Calculated");
+    const active = exchangeBonds(state, exchange.id).find((bond) => bond.leg === leg.id && bond.owner === leg.provider && bond.status === "Held");
+    if (active) continue;
+    const quote = bondQuote(state, leg);
+    const bond: CompletionBond = {
+      id: current?.id || `bond:${exchange.id}:${leg.id}:${leg.provider}`.slice(0, 240),
+      exchange: exchange.id,
+      leg: leg.id,
+      owner: leg.provider,
+      currency: "HKD",
+      reference_value: quote.referenceValue,
+      rate: quote.rate,
+      amount: quote.amount,
+      status: "Calculated",
+      returned_amount: 0,
+      applied_amount: 0,
+      terms_version: quote.termsVersion,
+    };
+    if (current) state.bonds[state.bonds.indexOf(current)] = bond;
+    else state.bonds.push(bond);
+    state.bondLedger = state.bondLedger.filter((entry) => !(entry.bond === bond.id && entry.event === "CALCULATED"));
+    recordBondEvent(state, bond, "CALCULATED", bond.amount, `Automatically calculated from ${hkd(bond.reference_value)} simulated service reference value at ${Math.round(bond.rate * 100)}%.`);
+  }
+}
+function repriceHeldBond(state: State, exchange: Exchange, leg: Leg) {
+  const bond = exchangeBonds(state, exchange.id).find((candidate) => candidate.leg === leg.id && candidate.owner === leg.provider && candidate.status === "Held");
+  if (!bond) return;
+  const quote = bondQuote(state, leg);
+  if (bond.reference_value === quote.referenceValue && bond.amount === quote.amount) return;
+  const before = bond.amount;
+  bond.reference_value = quote.referenceValue;
+  bond.rate = quote.rate;
+  bond.amount = quote.amount;
+  bond.terms_version = quote.termsVersion;
+  recordBondEvent(state, bond, "HELD", money(quote.amount - before), `All participants accepted the amendment; the simulated bond changed from ${hkd(before)} to ${hkd(quote.amount)}.`);
+}
+function holdCalculatedBonds(state: State, exchange: Exchange) {
+  for (const bond of exchangeBonds(state, exchange.id)) {
+    if (bond.status !== "Calculated") continue;
+    bond.status = "Held";
+    recordBondEvent(state, bond, "HELD", bond.amount, "All participants confirmed the service terms and the simulated completion bond.");
+  }
+}
+function returnBond(state: State, bond: CompletionBond, reason: string) {
+  if (bond.status !== "Held") return;
+  bond.status = "Returned";
+  bond.returned_amount = bond.amount;
+  recordBondEvent(state, bond, "RETURNED", bond.amount, reason, bond.owner);
+}
+function settleBond(state: State, bond: CompletionBond, appliedAmount: number, reason: string, recipient?: Person) {
+  if (bond.status !== "Held") return;
+  bond.status = "Settled";
+  bond.applied_amount = money(Math.min(bond.amount, Math.max(0, appliedAmount)));
+  bond.returned_amount = money(bond.amount - bond.applied_amount);
+  recordBondEvent(state, bond, "SETTLED", bond.applied_amount, reason, recipient);
+}
+function reconcileBonds(state: State, exchange: Exchange, responsible?: Person) {
+  const bonds = exchangeBonds(state, exchange.id);
+  if (exchange.status === "settled") {
+    for (const bond of bonds) {
+      if (exchange.recovery?.applied && exchange.recovery.withdrawn === bond.owner)
+        settleBond(state, bond, 0, "Accepted replacement completed the original obligation; no additional replacement cost was recorded.", exchange.recovery.replacement);
+      else returnBond(state, bond, "The promised contribution was completed and the exchange settled.");
+    }
+    return;
+  }
+  if (exchange.status === "withdrawn") {
+    for (const bond of bonds) {
+      const leg = exchange.legs.find((candidate) => candidate.id === bond.leg);
+      if (leg && remaining(state, exchange, leg) === 0)
+        returnBond(state, bond, "The owner completed the promised contribution before the exchange was withdrawn.");
+    }
+    return;
+  }
+  if (exchange.status === "defaulted") {
+    const unsettled = state.contributions.filter((contribution) => contribution.exchange === exchange.id && !contributionSettled(state, contribution));
+    const withdrawn = responsible || exchange.recovery?.withdrawn;
+    for (const bond of bonds) {
+      if (bond.owner !== withdrawn) {
+        returnBond(state, bond, "This participant was not responsible for the unresolved withdrawal.");
+        continue;
+      }
+      const recipient = unsettled.find((contribution) => contribution.provider !== withdrawn)?.provider;
+      settleBond(state, bond, recipient ? bond.amount : 0, recipient ? "No accepted replacement was found; the simulated bond was allocated to an affected contributor." : "No completed contribution was exposed, so the simulated bond was returned.", recipient);
+    }
+  }
+}
 export function compatible(o: Listing, n: Listing) {
   return (
     o.kind === "offer" &&
@@ -443,6 +595,8 @@ export function transition(input: State, action: Action): State {
   state.messages ??= [];
   state.bookings ??= [];
   state.notifications ??= [];
+  state.bonds ??= [];
+  state.bondLedger ??= [];
   const notify = (users: Person[], exchange: string, text: string) => {
     for (const user of users) state.notifications!.push({ id: id(), user, exchange, text, createdAt: new Date().toISOString(), read: false });
   };
@@ -557,7 +711,8 @@ export function transition(input: State, action: Action): State {
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
     });
-    notify([...new Set(action.legs.map((l) => l.receiver))], state.exchanges.at(-1)!.id, "A new exchange proposal needs your review.");
+    calculateBonds(state, state.exchanges.at(-1)!);
+    notify([...new Set(action.legs.map((l) => l.receiver))], state.exchanges.at(-1)!.id, "A new exchange proposal and its simulated completion bonds need your review.");
     return state;
   }
   if (action.type === "evaluate") {
@@ -617,6 +772,7 @@ export function transition(input: State, action: Action): State {
       `Recorded resolution: ${action.resolution}; ${d.released_minutes} min released. Original contribution preserved.`,
     );
     refresh(state, e);
+    reconcileBonds(state, e, action.resolution === "Default" ? s.provider : undefined);
     return state;
   }
   const e = state.exchanges.find((e) => e.id === action.exchange);
@@ -638,6 +794,7 @@ export function transition(input: State, action: Action): State {
     }
     e.legs = action.legs;
     e.confirmations = [];
+    calculateBonds(state, e);
     e.expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
     e.audit.push(`${name(action.user)} revised the proposed terms. Everyone must confirm again.`);
     notify(participants(e).filter((p) => p !== action.user), e.id, `${name(action.user)} changed the proposal. Review and confirm the new terms.`);
@@ -704,8 +861,11 @@ export function transition(input: State, action: Action): State {
     e.audit.push(
       `${name(action.user)} explicitly confirmed all terms${imbalance(e.legs) ? " and the potential imbalance" : ""}.`,
     );
-    if (participants(e).every((u) => e.confirmations.includes(u)))
+    if (participants(e).every((u) => e.confirmations.includes(u))) {
       e.status = "confirmed";
+      holdCalculatedBonds(state, e);
+      e.audit.push("All simulated completion bonds are held. No real funds were processed.");
+    }
     notify(participants(e).filter((p) => p !== action.user), e.id, `${name(action.user)} confirmed the exchange.`);
   }
   if (action.type === "complete") {
@@ -844,6 +1004,8 @@ export function transition(input: State, action: Action): State {
           : "proposed";
       if (!state.sessions.some((s) => s.exchange === e.id)) {
         const old = r.withdrawn;
+        for (const bond of exchangeBonds(state, e.id).filter((candidate) => candidate.owner === old))
+          returnBond(state, bond, "The participant withdrew before any service was delivered; the simulated bond was returned.");
         e.legs = e.legs.map((l) =>
           l.provider === old
             ? { ...r.leg!, id: l.id }
@@ -864,6 +1026,8 @@ export function transition(input: State, action: Action): State {
         );
         e.confirmations = participants(e);
         e.status = "confirmed";
+        calculateBonds(state, e);
+        holdCalculatedBonds(state, e);
       }
       e.audit.push(
         "All affected participants accepted the replacement. Existing responsibility and contribution history preserved.",
@@ -922,8 +1086,10 @@ export function transition(input: State, action: Action): State {
       `${name(action.user)} accepted amended terms and recalculated quantities.`,
     );
     if (participants(e).every((u) => a.confirmations.includes(u))) {
-      e.legs.find((l) => l.id === a.leg)!.sessions = a.after;
+      const amendedLeg = e.legs.find((l) => l.id === a.leg)!;
+      amendedLeg.sessions = a.after;
       a.status = "applied";
+      repriceHeldBond(state, e, amendedLeg);
       refresh(state, e);
     }
     notify(participants(e).filter((p) => p !== action.user), e.id, `${name(action.user)} accepted changed exchange terms.`);
@@ -941,6 +1107,7 @@ export function transition(input: State, action: Action): State {
     e.audit[e.audit.length - 1] =
       `${name(e.recovery.replacement!)} delivered replacement ${e.recovery.leg.skill}; covered ${name(e.recovery.withdrawn)}'s original obligation by explicit agreement.`;
   }
+  if (["settled", "withdrawn", "defaulted"].includes(e.status)) reconcileBonds(state, e);
   return state;
 }
 export function reliability(state: State, user: Person) {

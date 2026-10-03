@@ -84,6 +84,7 @@ The entry form requires only a display name and email. There is no password, con
 - Proposal expiry, declined and cancelled proposals, revised terms with renewed consent, and local per-participant updates.
 - Listing edit, duplicate, pause, archive, fulfilment and guarded deletion; multi-slot and date-range availability; a simulated review queue for Other skill suggestions.
 - Exchange conversations, exact session-time proposals and acceptance, calendar export, local reminders, cancellation/rescheduling, and a 15-minute no-show reporting window.
+- Platform-calculated simulated HKD service reference values and refundable 20% completion bonds, accepted in the existing all-party confirmation round and recorded in a separate bond ledger. No real funds are processed.
 - Demo Studio in the top bar opens the repeatable stories. The motion toggle pauses decorative animation; system reduced-motion preferences are respected.
 
 ## Demo walkthroughs
@@ -122,7 +123,7 @@ In **Changes & recovery**, propose a new total session count within offer capaci
 - `src/experience.tsx`: interactive hero, motion preference, animated values, exchange journey, and settlement celebration.
 - `scripts/browser-smoke.js`: browser-side smoke test exercising visible controls; run with an already-open local app using `agent-browser eval --stdin < scripts/browser-smoke.js`. This deliberately resets the local demo workspace.
 - Storage key: `skills-ring-demo-v1-<userId>` (mode: `skills-ring-mode-v1-<userId>`). Local scenario data uses this key. Live exchange state is stored transactionally in Supabase; the browser does not persist live snapshots under this key.
-- Conditions use conservative exact matching. The form supports multiple coarse availability slots and optional date ranges. Live session bookings, messages, and in-app notifications are stored in each exchange aggregate and refreshed across participant devices; no external notifications are delivered. There is no collateral, payment, or email integration.
+- Conditions use conservative exact matching. The form supports multiple coarse availability slots and optional date ranges. Live session bookings, messages, and in-app notifications are stored in each exchange aggregate and refreshed across participant devices; no external notifications are delivered. Completion bonds are a simulation-only risk-control demonstration; there is no payment custody, escrow provider, or email integration.
 - Contributions and session records preserve original claims. Dispute resolutions record separate recognized-duration adjustments. Remaining sessions and commitment/settlement state are derived, not editable balances. For the demo, each accepted service leg is treated as a concrete obligation, without tokens or prices.
 - The imbalance threshold is configurable through the domain helper (default 25% or different session counts). Participants’ consent is not a guarantee of substantive fairness.
 
