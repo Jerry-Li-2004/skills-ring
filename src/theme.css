@@ -352,15 +352,6 @@ main {
   max-width: 1370px;
   animation: page-arrive 0.5s var(--ease) both;
 }
-.breadcrumbs {
-  color: #a1a1b0;
-  font-size: 11px;
-  gap: 8px;
-  margin-bottom: 23px;
-}
-.breadcrumbs span {
-  color: #79798a;
-}
 .eyebrow {
   color: #9392a6;
   font-size: 9px;
@@ -2202,10 +2193,6 @@ main {
   main {
     margin-left: 0;
     padding: 88px 20px 24px;
-  }
-  .breadcrumbs {
-    font-size: 11px;
-    margin-bottom: 22px;
   }
   .page-heading {
     margin-bottom: 23px;

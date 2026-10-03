@@ -362,10 +362,6 @@ function App() {
               page closes.
             </div>
           )}
-          <div className="breadcrumbs">
-            Workspace <ChevronRight size={13} />
-            <span>{page}</span>
-          </div>
           {page === "Home" ? (
             <>
               <SkillOrbit

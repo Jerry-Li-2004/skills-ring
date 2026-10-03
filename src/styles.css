@@ -448,17 +448,6 @@ main {
   max-width: 1320px;
   margin: auto;
 }
-.breadcrumbs {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  font-size: 12px;
-  color: #9ba197;
-  margin-bottom: 24px;
-}
-.breadcrumbs span {
-  color: #66725e;
-}
 .page-heading {
   display: flex;
   align-items: center;
@@ -2045,9 +2034,6 @@ main {
   main {
     margin-left: 0;
     padding: 81px 18px 24px;
-  }
-  .breadcrumbs {
-    margin-bottom: 20px;
   }
   .page-heading h1 {
     font-size: 24px;

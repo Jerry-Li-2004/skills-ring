@@ -10,6 +10,7 @@ This folder contains the complete English conversion of the Skills-Ring product 
 4. [Resilience Reliability and Product Flow](04-resilience-reliability-and-product-flow.md) — withdrawal, rematching, disputes, reliability, asymmetry controls, collateral, and the end-to-end workflow.
 5. [Core Product Data Dictionary](05-core-product-data-dictionary.md) — User, Skill, Offer, Need, Availability, Match, Exchange, Commitment, Contribution, Session, and Settlement entities.
 6. [Trust Graph and Recommendation Data Dictionary](06-trust-graph-and-recommendations.md) — Evaluation, Reliability, Dispute, Withdrawal, Fairness, Commitment Limit, Network Graph, recommendations, and the core object model.
+7. [Refundable Completion Bond Fintech Rationale](07-refundable-completion-bond-fintech-rationale.md) — proposed bond mechanism, fintech rationale, settlement example, fairness trade-off, failure boundaries, and hackathon demonstration scope.
 
 ## Product statement
 
