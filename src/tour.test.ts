@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { findMatches, outstanding, transition } from './domain';
+import { buildSteps } from './TourGuide';
+import { exchangeBonds, findMatches, outstanding, transition } from './domain';
 import { readTourResume, routeIds, tourFixture, tourListing } from './tour-model';
 
 describe('guided tour domain fixtures', () => {
@@ -44,4 +45,34 @@ describe('guided tour domain fixtures', () => {
     expect(readTourResume({getItem:()=>'{"version":1,"chapter":"ring"}'},'alice')).toBe('ring');
     expect(readTourResume({getItem:()=>{throw Error('disabled');}},'alice')).toBeNull();
   });
+});
+
+describe('short guided story', () => {
+  it('publishes one offer and one need while keeping the full exchange journey', () => {
+    const steps = buildSteps();
+    expect(steps.filter(s => s.target === '[data-tour="publish"]')).toHaveLength(2);
+    expect(steps.reduce((total, step) => total + step.hold, 0)).toBeCloseTo(122000);
+    for (const chapter of ['discovery', 'ring', 'settlement']) expect(steps.some(s => s.chapter === chapter)).toBe(true);
+    expect(steps.filter(s => s.target?.startsWith('[data-tour="confirm-'))).toHaveLength(3);
+    expect(steps.filter(s => s.target === '[data-tour="complete-bob"]')).toHaveLength(2);
+    let state = tourFixture('discovery');
+    state = transition(state, { type: 'listing', listing: tourListing('alice', 'offer', 'Python', 60, 2) });
+    expect(findMatches(state, 'alice')).toHaveLength(1);
+    expect(findMatches(state, 'alice')[0].some(leg => leg.receiver === 'bob')).toBe(true);
+  });
+});
+
+it('holds deposits until the prepared exchange finishes, then returns every deposit in full', () => {
+  let state = tourFixture('settlement');
+  const exchange = state.exchanges[0];
+  const leg = exchange.legs.find(leg => leg.provider === 'bob')!;
+  expect(exchangeBonds(state, exchange.id).map(bond => bond.status)).toEqual(['Held', 'Held']);
+  state = transition(state, {type:'complete', exchange:exchange.id, leg:leg.id});
+  expect(exchangeBonds(state, exchange.id).every(bond => bond.status === 'Held')).toBe(true);
+  state = transition(state, {type:'complete', exchange:exchange.id, leg:leg.id});
+  for (const bond of exchangeBonds(state, exchange.id)) {
+    expect(bond.status).toBe('Returned');
+    expect(bond.returned_amount).toBe(bond.amount);
+    expect(state.bondLedger?.some(entry => entry.bond === bond.id && entry.event === 'RETURNED' && entry.amount === bond.amount)).toBe(true);
+  }
 });

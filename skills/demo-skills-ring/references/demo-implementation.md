@@ -1,5 +1,9 @@
 # Demo implementation and recording specification
 
+## Current timing update
+
+The shortened autoplay follows the current walkthrough at the top of [the storyboard](demo-storyboard.md). It uses 122 seconds of reading holds plus UI readiness/action time. Discovery now publishes one two-session Python offer and keeps the single Bob match; the Guitar addition remains only in fixture coverage tests. The ring chapter demonstrates adding a need. The original A2 sequence and 180-second recording plan below are historical, not the current autoplay requirement.
+
 ## Status and boundaries
 
 The core guided tour is implemented in `src/TourGuide.tsx`, with cancellable playback in `src/tour-runner.ts` and isolated fixtures in `src/tour-model.ts`. The original specification below also describes optional future refinements. The app uses chapter-level resume markers, restarts the saved chapter paused after reload, and keeps tour data in memory. Exact mid-step persistence and automated recording are not implemented. Advanced optional chapters remain in the manual Demo Studio.

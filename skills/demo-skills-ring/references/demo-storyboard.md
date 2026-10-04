@@ -1,5 +1,26 @@
 # Demo storyboard and ideas
 
+## Current short walkthrough
+
+The current autoplay replaces the original three-minute script below. Its reading holds total 122 seconds; allow roughly two and a half minutes including verified UI actions. Actual duration depends on rendering and pauses. The persistent journey is **Share → Find people → Agree → Meet → Finish**.
+
+| Scene | What the user sees and gains | Reading budget |
+|---|---|---|
+| 1 | Follow fictional Alice from sharing a skill to giving back. | 6s |
+| 2 | Publish one Python offer for two lessons; a real match with Bob appears. | 14s |
+| 3 | Save the match and check Bob’s profile before deciding. | 8s |
+| 4 | Separate example: add one Photography need to connect a group of three. Explain who teaches whom. | 16s |
+| 5 | Review the deposit amounts, invite the group, confirm lessons and deposits, and open Bond protection to see Held amounts. | 24s |
+| 6 | Message, suggest a time and meeting place, and show Charlie accepting. | 16s |
+| 7 | Explicit time jump to the prepared direct exchange. Track held deposits, complete Bob’s remaining lessons, and show both deposits returned in full. | 28s |
+| 8 | Leave feedback about a completed lesson and invite the viewer to add their own offer and need. | 10s |
+
+Trimmed: the extra Guitar request, switching between two direct matches, and re-entering default teaching levels and one-lesson counts. Keep one offer form and one need form, all three confirmations, and both completion actions: each demonstrates a distinct outcome. Advanced scenarios remain in manual Demo Studio.
+
+Use everyday words in guidance: “match” instead of “eligible route,” “teaching plan” instead of “complete route,” and “lessons left” instead of “remaining obligation.” Keep actual product navigation labels where they help viewers find the feature.
+
+## Original three-minute storyboard (historical reference)
+
 ## Story and presentation rules
 
 Audience: judges and first-time users. Main message: share what you can give, state what you need, discover compatible exchanges, and see responsibilities through to completion.

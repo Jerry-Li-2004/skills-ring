@@ -153,7 +153,7 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
     setDemo(next);
   }
   return <><div hidden={!!tour} inert={!!tour}><Workspace key={`${account.userId}-${demo}`} account={account} onLogout={onLogout} demo={demo} onModeChange={changeMode} onStartTour={startTour} suspended={!!tour} /></div>
-    {tour && <Workspace key="guided-tour" account={{...account, name: "Alice · fictional demo", email: ""}} onLogout={async () => exitTour()} demo onModeChange={exitTour} onStartTour={startTour} tour={tour} tourPaused={resumeTour} onExitTour={exitTour} />}</>;
+    {tour && <Workspace key="guided-tour" account={{...account, name: "Alice", email: ""}} onLogout={async () => exitTour()} demo onModeChange={exitTour} onStartTour={startTour} tour={tour} tourPaused={resumeTour} onExitTour={exitTour} />}</>;
 }
 function Workspace({ account, onLogout, demo, onModeChange, onStartTour, tour, tourPaused, onExitTour, suspended = false }: {
   account: Account; onLogout: () => Promise<void>; demo: boolean; onModeChange: (demo: boolean) => void;
@@ -185,7 +185,7 @@ function Workspace({ account, onLogout, demo, onModeChange, onStartTour, tour, t
         }
         if (renamed) {
           exchange.audit.push(
-            "Fictional demo venue relabelled as Local meeting point. Service terms and completed work preserved.",
+            "Venue relabelled as Local meeting point. Service terms and completed work preserved.",
           );
         }
       }
@@ -450,8 +450,8 @@ function Workspace({ account, onLogout, demo, onModeChange, onStartTour, tour, t
           <kbd>⌕</kbd>
         </div>
         <div className="top-actions">
-          {!tour && <button className="button small-button" onClick={onStartTour}>Explore a demo</button>}
-          {dataMode === "demo" && !tour && <button className="demo-launcher" onClick={() => setModal("demo")}>
+          {!tour && <button className="button small-button" onClick={() => setModal("demo")}>Explore a demo</button>}
+          {dataMode === "demo" && !tour && <button className="demo-launcher" onClick={onStartTour}>
             <Play size={13} fill="currentColor" /> Demo studio
           </button>}
           <button
@@ -539,7 +539,7 @@ function Workspace({ account, onLogout, demo, onModeChange, onStartTour, tour, t
             </span>
             <button className="button small-button" onClick={() => onModeChange(false)}>{tour ? "Return to my workspace" : "Open my live workspace"} <ArrowUpRight size={16} /></button>
             <label>View as
-              <select aria-label="Fictional demo participant" value={user} onChange={(e) => setUser(e.target.value as Person)}>
+              <select aria-label="Demo participant" value={user} onChange={(e) => setUser(e.target.value as Person)}>
                 {["alice", "bob", "charlie", "david"].map((p) => <option key={p} value={p}>{people[p as Person].name}</option>)}
               </select>
             </label>
@@ -1099,7 +1099,7 @@ function Workspace({ account, onLogout, demo, onModeChange, onStartTour, tour, t
               <BookOpen size={20} />
               <p>
                 Profiles and live exchanges are saved in Supabase. The example
-                workspace uses fictional participants and browser storage; dispute
+                workspace uses example participants and browser storage; dispute
                 administration and completion bonds in the demo are simulated.
                 There are no real payments, safeguarded funds, or transferable credits.
               </p>
@@ -1164,7 +1164,7 @@ function Workspace({ account, onLogout, demo, onModeChange, onStartTour, tour, t
               </button>
             ))}
           </div>}
-          {dataMode === "demo" && state.listings.some((l) => l.status === "Pending review") && <section className="recovery-section"><h3>Demo skill review queue</h3><p>These fictional suggestions stay out of matching until reviewed. Production moderation requires P0 accounts and P2 moderator permissions.</p>{state.listings.filter((l) => l.status === "Pending review").map((l) => <div className="booking-card" key={l.id}><strong>{people[l.user].name}: {l.otherSkill}</strong><p>{l.kind} · {l.category}</p><div className="button-row"><button className="button" onClick={() => act({ type: "reviewListing", id: l.id, approved: true })}>Approve suggestion</button><button className="button" onClick={() => act({ type: "reviewListing", id: l.id, approved: false })}>Reject suggestion</button></div></div>)}</section>}
+          {dataMode === "demo" && state.listings.some((l) => l.status === "Pending review") && <section className="recovery-section"><h3>Demo skill review queue</h3><p>These example suggestions stay out of matching until reviewed. Production moderation requires P0 accounts and P2 moderator permissions.</p>{state.listings.filter((l) => l.status === "Pending review").map((l) => <div className="booking-card" key={l.id}><strong>{people[l.user].name}: {l.otherSkill}</strong><p>{l.kind} · {l.category}</p><div className="button-row"><button className="button" onClick={() => act({ type: "reviewListing", id: l.id, approved: true })}>Approve suggestion</button><button className="button" onClick={() => act({ type: "reviewListing", id: l.id, approved: false })}>Reject suggestion</button></div></div>)}</section>}
         </Modal>
       )}
       {modal === "notifications" && (
@@ -1539,7 +1539,7 @@ function ListingForm({
         </button>
       </div>}
       <p>
-        {live ? "Posting as" : "Demo only · posting as fictional participant"} <strong>{people[user].name}</strong>.
+        Posting as <strong>{people[user].name}</strong>.
         Each offer and need has its own preferences.
       </p>
       <div className="form-grid">
