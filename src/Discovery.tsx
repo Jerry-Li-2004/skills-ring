@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowRight, Bookmark, CalendarDays, Check, ChevronDown, Clock3, MapPin, RotateCcw, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 import { type Leg, type Person, type State, validRoute, bondQuote, hkd, imbalance, library, minutes, name, outstanding, people, reliability } from "./domain";
+import { dialogFocusTargets } from "./tour-dom";
 import "./discovery.css";
 
 type Route = { key: string; legs: Leg[] };
@@ -22,7 +23,7 @@ export function trackDiscoveryEvent(event: string, route: string, user: Person) 
     localStorage.setItem("skills-ring-discovery-events-v1", JSON.stringify(current.slice(-500)));
   } catch { /* Private browsing may disable storage. */ }
 }
-const track = trackDiscoveryEvent;
+
 function routeKey(legs: Leg[]) { return legs.map((l) => l.id).join("|"); }
 function nextSlotDistance(slot: string) {
   const now = new Date();
@@ -51,14 +52,15 @@ function ProfilePanel({ state, person, skill, self }: { state: State; person: Pe
     {!self && <div className="discover-trust"><ShieldCheck size={20} /><div><strong>{evidence.reviews ? `${evidence.onTime}% on time` : "New member"}</strong><small>{evidence.reviews ? `${evidence.reviews} reviews · ${evidence.sessions} sessions given` : `${evidence.sessions} sessions given · No reviews yet`}</small></div></div>}
   </section>;
 }
-export function Discovery({ state, user, matches, query, loading = false, initialReviewKey, onInitialReviewOpened, onPropose, onEditListings }: {
-  state: State; user: Person; matches: Leg[][]; query: string;
+export function Discovery({ isolated = false, state, user, matches, query, loading = false, initialReviewKey, onInitialReviewOpened, onPropose, onEditListings }: {
+  isolated?: boolean; state: State; user: Person; matches: Leg[][]; query: string;
   loading?: boolean;
   initialReviewKey?: string | null; onInitialReviewOpened?: () => void;
   onPropose: (legs: Leg[]) => boolean; onEditListings: () => void;
 }) {
+  const track = isolated ? () => {} : trackDiscoveryEvent;
   const [preferences, setPreferences] = useState<Preference>(() => {
-    try { return JSON.parse(localStorage.getItem(`${KEY}-${user}`) || "null") || { passed: [], saved: [], seen: [] }; }
+    try { if (isolated) return { passed: [], saved: [], seen: [] }; return JSON.parse(localStorage.getItem(`${KEY}-${user}`) || "null") || { passed: [], saved: [], seen: [] }; }
     catch { return { passed: [], saved: [], seen: [] }; }
   });
   const [index, setIndex] = useState(0);
@@ -72,11 +74,11 @@ export function Discovery({ state, user, matches, query, loading = false, initia
   const [online, setOnline] = useState(() => navigator.onLine);
   const touch = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
-    try { localStorage.setItem(`${KEY}-${user}`, JSON.stringify(preferences)); } catch { /* Optional persistence. */ }
+    try { if (isolated) return; localStorage.setItem(`${KEY}-${user}`, JSON.stringify(preferences)); } catch { /* Optional persistence. */ }
   }, [preferences, user]);
   useEffect(() => { const update = () => setOnline(navigator.onLine); window.addEventListener("online", update); window.addEventListener("offline", update); return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); }; }, []);
   useEffect(() => {
-    try { setPreferences(JSON.parse(localStorage.getItem(`${KEY}-${user}`) || "null") || { passed: [], saved: [], seen: [] }); }
+    try { if (isolated) { setPreferences({ passed: [], saved: [], seen: [] }); return; } setPreferences(JSON.parse(localStorage.getItem(`${KEY}-${user}`) || "null") || { passed: [], saved: [], seen: [] }); }
     catch { setPreferences({ passed: [], saved: [], seen: [] }); }
     setIndex(0);
   }, [user]);
@@ -161,7 +163,7 @@ export function Discovery({ state, user, matches, query, loading = false, initia
     </div>}
     {unavailableSaved.length > 0 && <div className="saved-unavailable"><h3>Saved matches that changed</h3>{unavailableSaved.map((key) => { const exchange = state.exchanges.find((e) => e.legs.map((l) => l.id).join("|") === key); const status = exchange ? `Proposal ${exchange.status}` : "Listing or match no longer available"; return <div key={key}><span>{status}</span><button className="text-link" onClick={() => setPreferences((p) => ({ ...p, saved: p.saved.filter((item) => item !== key) }))}>Remove saved</button></div>; })}</div>}
     {loading ? <div className="card discover-end" role="status" aria-busy="true"><Clock3 size={27} /><h3>Finding compatible exchanges…</h3><p>Checking skills, availability, and session terms.</p></div> : current ? (() => { const legs = current.legs; const give = legs.find((l) => l.provider === user)!; const receive = legs.find((l) => l.receiver === user)!; const member = receive.provider; const sameSlot = give.availability === receive.availability; return <>
-      <article className="discover-card" tabIndex={0} aria-label={"Match " + (currentIndex + 1) + " of " + visible.length + ". " + people[member].name} onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "ArrowLeft") { e.preventDefault(); pass(); } if (e.key === "ArrowRight") { e.preventDefault(); save(); } if (e.key === "Enter") openReview(); }} onPointerDown={(e) => { if (!(e.target as HTMLElement).closest("button,input,select,label")) touch.current = { x: e.clientX, y: e.clientY }; }} onPointerUp={(e) => { if (!touch.current) return; const dx = e.clientX - touch.current.x; const dy = e.clientY - touch.current.y; if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) { if (dx < 0) pass(); else save(); } touch.current = null; }} onPointerCancel={() => { touch.current = null; }}>
+      <article data-tour="match-card" className="discover-card" tabIndex={0} aria-label={"Match " + (currentIndex + 1) + " of " + visible.length + ". " + people[member].name} onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "ArrowLeft") { e.preventDefault(); pass(); } if (e.key === "ArrowRight") { e.preventDefault(); save(); } if (e.key === "Enter") openReview(); }} onPointerDown={(e) => { if (!(e.target as HTMLElement).closest("button,input,select,label")) touch.current = { x: e.clientX, y: e.clientY }; }} onPointerUp={(e) => { if (!touch.current) return; const dx = e.clientX - touch.current.x; const dy = e.clientY - touch.current.y; if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) { if (dx < 0) pass(); else save(); } touch.current = null; }} onPointerCancel={() => { touch.current = null; }}>
         <ProfilePanel state={state} person={user} skill={give.skill} self />
         <div className="discover-steps" aria-label="How this exchange works">
           <div className="discover-step"><span className="discover-step-number">1</span><div className="discover-step-content"><h2>What you teach</h2><p>{name(user)} teaches <strong>{give.skill}</strong> to {name(give.receiver)}</p><small>{give.sessions} {give.sessions === 1 ? "session" : "sessions"} · {give.duration} minutes each</small><div className="discover-direction right"><span /><ArrowRight size={23} /></div></div></div>
@@ -173,7 +175,7 @@ export function Discovery({ state, user, matches, query, loading = false, initia
       {legs.length > 2 && <div className="discover-route-list"><strong>How the full {legs.length}-person ring works</strong>{legs.map((l) => <p key={l.id}>{people[l.provider].name} gives {l.sessions} × {minutes(l.duration)} of {l.skill} to {people[l.receiver].name}</p>)}</div>}
       {imbalance(legs) && <p className="discover-warning">Time or session quantities differ: {legs.map((l) => name(l.provider) + " gives " + minutes(l.sessions * l.duration)).join("; ")}. Everyone must accept this explicitly.</p>}
       {outstanding(state, member).length > 0 && <p className="discover-warning">{name(member)} has an unfinished commitment. Receive-first restrictions may affect when this exchange can begin.</p>}
-      <div className="discover-actions"><button className="button primary" onClick={openReview}>Review match <ArrowRight size={18} /></button><button className="button" onClick={save}><Bookmark size={18} /> {savedView ? "Remove saved" : "Save"}</button><button className="button" onClick={pass}><X size={19} /> Pass</button></div>
+      <div className="discover-actions"><button data-tour="review" className="button primary" onClick={openReview}>Review match <ArrowRight size={18} /></button><button data-tour="save-match" className="button" onClick={save}><Bookmark size={18} /> {savedView ? "Remove saved" : "Save"}</button><button className="button" onClick={pass}><X size={19} /> Pass</button></div>
       <p className="discover-hint">You’ll confirm the details together before anything is final.</p>
     </>; })() : <div className="card discover-end"><h3>{savedView ? "No saved matches here" : noPublishedOffer ? "Add an offer to find exchange matches" : "You’re through this stack"}</h3><p>{noPublishedOffer ? "An exchange needs something you can give as well as something you want to learn. Publish an offer to start matching with the community." : routes.length ? "You can broaden the filters, revisit saved matches, or update what you offer and need." : "No feasible matches are available. Try a new offer or need, or broaden your preferences."}</p><div className="button-row"><button className="button" onClick={() => { setFilter({ category: "", skill: "", mode: "", location: "", availability: "", duration: "", type: "", reliability: "" }); setSavedView(false); }}>Broaden filters</button><button className="button" onClick={onEditListings}>Edit offers or needs</button><button className="button" onClick={() => setSavedView(true)}>Revisit saved matches</button></div></div>}
     {!savedView && suggestions.length > 0 && <section className="card discover-suggestions" aria-label="People to explore">
@@ -188,7 +190,7 @@ export function Discovery({ state, user, matches, query, loading = false, initia
       })}</div>
       <footer className="discover-suggestions-footer"><p>These are discovery suggestions. Exchange compatibility still needs checking.</p><button className="button" onClick={onEditListings}>Update my offers or needs <ArrowRight size={16} /></button></footer>
     </section>}
-    {review && createPortal(<Review route={review} state={state} user={user} onClose={() => setReview(null)} onPropose={(legs) => { if (onPropose(legs)) { track("proposal", review.key, user); setReview(null); return true; } return false; }} />, document.body)}
+    {review && createPortal(<Review route={review} state={state} user={user} onClose={() => setReview(null)} onPropose={(legs) => { if (onPropose(legs)) { track("proposal", review.key, user); setReview(null); return true; } return false; }} />, (isolated ? document.querySelector(".tour-workspace") || document.body : document.body))}
   </section>;
 }
 
@@ -197,7 +199,7 @@ function Review({ route, state, user, onClose, onPropose }: { route: Route; stat
   const [step, setStep] = useState<"detail" | "confirm">("detail");
   const [error, setError] = useState("");
   const dialog = useRef<HTMLDivElement>(null);
-  useEffect(() => { const previous = document.activeElement as HTMLElement | null; dialog.current?.focus(); const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); if (e.key === "Tab" && dialog.current) { const targets = [...dialog.current.querySelectorAll<HTMLElement>('button,input,select,textarea,[tabindex]:not([tabindex="-1"])')].filter((element) => !element.hasAttribute("disabled")); const first = targets[0], last = targets.at(-1); if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } } }; document.addEventListener("keydown", handler); return () => { document.removeEventListener("keydown", handler); previous?.focus(); }; }, [onClose]);
+  useEffect(() => { const previous = document.activeElement as HTMLElement | null; dialog.current?.focus(); const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); if (e.key === "Tab" && dialog.current) { const targets = dialogFocusTargets(dialog.current); const first = targets[0], last = targets.at(-1); if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } } }; document.addEventListener("keydown", handler); return () => { document.removeEventListener("keydown", handler); previous?.focus(); }; }, [onClose]);
   function change(id: string, field: keyof Leg, value: string | number) { setLegs((all) => all.map((l) => l.id === id ? { ...l, [field]: value } : l)); }
   const give = legs.find((l) => l.provider === user)!; const receive = legs.find((l) => l.receiver === user)!;
   return <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}><div className="modal wide" role="dialog" aria-modal="true" aria-label="Review match" tabIndex={-1} ref={dialog}><header className="modal-header"><h2>{step === "detail" ? "Review the match" : "Confirm proposal"}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={20} /></button></header><div className="modal-body discover-review">
@@ -214,6 +216,6 @@ function Review({ route, state, user, onClose, onPropose }: { route: Route; stat
     {imbalance(legs) && <p className="discover-warning">Potential imbalance: {legs.map((l) => `${name(l.provider)} ${minutes(l.sessions * l.duration)}`).join(" · ")}. All participants must accept these amounts.</p>}
     <p className="muted">Changes to count, duration, mode, location or availability are suggestions. They take effect only when every participant confirms; an existing proposal cannot silently change.</p>
     {error && <p className="discover-warning" role="alert">{error}</p>}
-    <div className="button-row">{step === "detail" ? <button className="button primary" onClick={() => setStep("confirm")}>Continue to confirmation</button> : <><button className="button" onClick={() => setStep("detail")}>Edit terms</button><button className="button primary" onClick={() => { if (!onPropose(legs)) setError("This match is no longer available or the suggested terms are invalid. Review the latest listings and try again."); }}>Send proposal to everyone</button></>}</div>
+    <div className="button-row">{step === "detail" ? <button data-tour="review-continue" className="button primary" onClick={() => setStep("confirm")}>Continue to confirmation</button> : <><button className="button" onClick={() => setStep("detail")}>Edit terms</button><button data-tour="propose" className="button primary" onClick={() => { if (!onPropose(legs)) setError("This match is no longer available or the suggested terms are invalid. Review the latest listings and try again."); }}>Send proposal to everyone</button></>}</div>
   </div></div></div>;
 }

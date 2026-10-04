@@ -68,6 +68,9 @@ import {
   hkd,
   id,
 } from "./domain";
+import { dialogFocusTargets } from "./tour-dom";
+import { TourGuide, type TourBridge } from "./TourGuide";
+import { tourFixture, readTourResume, tourResumeKey, type TourChapter } from "./tour-model";
 import "./styles.css";
 import "./theme.css";
 import "./community.css";
@@ -140,18 +143,26 @@ function App({ account, onLogout }: { account: Account; onLogout: () => Promise<
   const [demo, setDemo] = useState(() => {
     try { return restoreDemoMode(localStorage, account.userId); } catch { return false; }
   });
+  const [tour, setTour] = useState<TourChapter | null>(() => readTourResume(sessionStorage, account.userId));
+  const [resumeTour, setResumeTour] = useState(() => Boolean(readTourResume(sessionStorage, account.userId)));
+  const launchFocus = useRef<HTMLElement | null>(null);
+  function startTour() { setResumeTour(false); launchFocus.current = document.activeElement as HTMLElement; setTour("discovery"); }
+  function exitTour() { try { sessionStorage.removeItem(tourResumeKey(account.userId)); } catch { /* Optional storage. */ } setTour(null); requestAnimationFrame(() => launchFocus.current?.focus()); }
   function changeMode(next: boolean) {
     try { localStorage.setItem(`skills-ring-mode-v1-${account.userId}`, next ? "demo" : "live"); } catch { /* Mode still changes for this visit. */ }
     setDemo(next);
   }
-  return <Workspace key={`${account.userId}-${demo}`} account={account} onLogout={onLogout} demo={demo} onModeChange={changeMode} />;
+  return <><div hidden={!!tour} inert={!!tour}><Workspace key={`${account.userId}-${demo}`} account={account} onLogout={onLogout} demo={demo} onModeChange={changeMode} onStartTour={startTour} suspended={!!tour} /></div>
+    {tour && <Workspace key="guided-tour" account={{...account, name: "Alice · fictional demo", email: ""}} onLogout={async () => exitTour()} demo onModeChange={exitTour} onStartTour={startTour} tour={tour} tourPaused={resumeTour} onExitTour={exitTour} />}</>;
 }
-function Workspace({ account, onLogout, demo, onModeChange }: {
+function Workspace({ account, onLogout, demo, onModeChange, onStartTour, tour, tourPaused, onExitTour, suspended = false }: {
   account: Account; onLogout: () => Promise<void>; demo: boolean; onModeChange: (demo: boolean) => void;
+  suspended?: boolean; onStartTour: () => void; tour?: TourChapter; tourPaused?: boolean; onExitTour?: () => void;
 }) {
   const demoStorage = `${STORAGE}-${account.userId}`;
   const [motion, setMotion] = useMotionPreference();
   const [state, setState] = useState<State>(() => {
+    if (tour) return tourFixture(tour);
     try {
       const s = JSON.parse(localStorage.getItem(demoStorage) || "null");
       if (s?.version !== 1 || !Array.isArray(s.exchanges)) return seed();
@@ -203,15 +214,15 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
     [listingKind, setListingKind] = useState<"offer" | "need">("offer");
   useEffect(() => {
     try {
-      if (!demo || state.liveStats) return;
+      if (suspended || tour || !demo || state.liveStats) return;
       localStorage.setItem(demoStorage, JSON.stringify(state));
       setStorageError(false);
     } catch {
       setStorageError(true);
     }
-  }, [state, demo, demoStorage]);
+  }, [state, demo, demoStorage, tour, suspended]);
   useEffect(() => {
-    if (demo) return;
+    if (demo || suspended) return;
     let cancelled = false;
     const refresh = async (initial = false) => {
       const request = ++snapshotEpoch.current;
@@ -238,8 +249,9 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
     const onFocus = () => { if (activeExchangeSyncs.current === 0) void refresh(); };
     window.addEventListener("focus", onFocus);
     return () => { cancelled = true; window.clearInterval(poll); window.removeEventListener("focus", onFocus); };
-  }, [account.name, account.userId, demo]);
+  }, [account.name, account.userId, demo, suspended]);
   useEffect(() => {
+    if (suspended || tour) return;
     const checkTimedEvents = () => setState((current) => {
       if (current.liveStats) return current;
       const proposal = current.exchanges.find((e) => e.status === "proposed" && e.expiresAt && Date.parse(e.expiresAt) <= Date.now());
@@ -250,7 +262,7 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
     checkTimedEvents();
     const timer = window.setInterval(checkTimedEvents, 60000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [suspended, tour]);
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(""), 5500);
@@ -297,7 +309,7 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
       } else if (action.type === "confirm") {
         setToast("Agreement recorded. One step closer to your exchange.");
         const confirmed = next.exchanges.find((e) => e.id === action.exchange);
-        if (confirmed?.status === "confirmed") trackDiscoveryEvent("accepted_exchange", confirmed.legs.map((l) => l.id).join("|"), action.user);
+        if (!tour && confirmed?.status === "confirmed") trackDiscoveryEvent("accepted_exchange", confirmed.legs.map((l) => l.id).join("|"), action.user);
       } else if (action.type === "evaluate") {
         setToast("Feedback saved. A little trust goes a long way.");
       }
@@ -319,6 +331,10 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
     {dataMode === "error" && <button className="button" onClick={() => window.location.reload()}>Try again</button>}
     <button className="button" onClick={() => void onLogout()}>Leave profile</button></div>
   </main>;
+  const tourBridge: TourBridge = { state, page, user, modal: modal || (selected ? "exchange" : null),
+    go, selectUser: setUser, openExchange: () => setSelected(state.exchanges[0]?.id || null),
+    reset: (chapter) => { setState(tourFixture(chapter)); setUser("alice"); setSelected(null); setModal(null); setEditingListing(null); setDiscoveryEpoch(n => n+1); go("Home"); },
+  };
   const myExchanges = state.exchanges.filter(
     (e) => participants(e).includes(user) || e.recovery?.replacement === user,
   );
@@ -397,7 +413,7 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
   }
   const openMatches = () => go("Discover matches");
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${tour ? "tour-workspace" : ""}`} data-tour-workspace={tour ? "true" : undefined}>
       <header className="topbar">
         <button
           className="mobile-toggle icon-button"
@@ -434,7 +450,8 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
           <kbd>⌕</kbd>
         </div>
         <div className="top-actions">
-          {dataMode === "demo" && <button className="demo-launcher" onClick={() => setModal("demo")}>
+          {!tour && <button className="button small-button" onClick={onStartTour}>Explore a demo</button>}
+          {dataMode === "demo" && !tour && <button className="demo-launcher" onClick={() => setModal("demo")}>
             <Play size={13} fill="currentColor" /> Demo studio
           </button>}
           <button
@@ -475,6 +492,7 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
           {[...nav, ...(!demo && account.moderator ? [{ label: "Moderation", icon: ShieldCheck }] : [])].map(({ label, icon: Icon }) => (
             <button
               key={label}
+              data-tour={`nav-${label}`}
               className={page === label ? "selected" : ""}
               onClick={() => go(label)}
             >
@@ -503,12 +521,12 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
           <button className="side-utility" onClick={() => setModal("help")}>
             <CircleHelp size={18} /> How Skills-Ring works
           </button>
-          <button className="side-utility" onClick={() => setModal("demo")}>
-            <Settings size={18} /> Workspace settings
+          <button className="side-utility" onClick={() => tour ? onExitTour?.() : setModal("demo")}>
+            <Settings size={18} /> {tour ? "Return to workspace" : "Workspace settings"}
           </button>
           <div className="sidebar-footer">
             <span className="live-dot" />
-            {dataMode === "live" ? "Live Supabase community" : "Local demo · Saved on this device"}
+            {tour ? "Guided demo · Separate sandbox" : dataMode === "live" ? "Live Supabase community" : "Local demo · Saved on this device"}
           </div>
         </div>
       </aside>
@@ -519,14 +537,14 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
               <strong>Your example workspace</strong>
               {` · Welcome, ${account.name}. Try Alice’s sample skills, matches, and exchange. Changes stay in this demo.`}
             </span>
-            <button className="button small-button" onClick={() => onModeChange(false)}>Open my live workspace <ArrowUpRight size={16} /></button>
+            <button className="button small-button" onClick={() => onModeChange(false)}>{tour ? "Return to my workspace" : "Open my live workspace"} <ArrowUpRight size={16} /></button>
             <label>View as
               <select aria-label="Fictional demo participant" value={user} onChange={(e) => setUser(e.target.value as Person)}>
                 {["alice", "bob", "charlie", "david"].map((p) => <option key={p} value={p}>{people[p as Person].name}</option>)}
               </select>
             </label>
           </div>}
-          {dataMode === "live" && state.starterAvailable && <div className="notice"><Sparkles size={20} /><div><p><strong>Your live workspace</strong> · Only published listings and community exchanges appear here. Demo examples are separate and do not count toward your matches.</p><button className="button small-button" onClick={() => onModeChange(true)}>Explore a demo</button></div></div>}
+          {dataMode === "live" && state.starterAvailable && <div className="notice"><Sparkles size={20} /><div><p><strong>Your live workspace</strong> · Only published listings and community exchanges appear here. Demo examples are separate and do not count toward your matches.</p><button className="button small-button" onClick={onStartTour}>Explore a demo</button></div></div>}
           {dataMode === "live" && !hasPublishedOffer && <div className="notice" role="status"><AlertTriangle size={20} /><div><p><strong>No active published offer yet.</strong> {publishedRequests.length === 1 ? `Your ${publishedRequests[0]} request is published. ` : publishedRequests.length ? "Your requests are published. " : ""}Add a skill you can offer to unlock exchange matching. Demo offers do not count.</p><button className="button small-button" onClick={() => add("offer")}>Add an offer</button></div></div>}
           {liveError && <div className="warning"><AlertTriangle size={18} /> {liveError}</div>}
           {storageError && (
@@ -752,7 +770,7 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
                     }
                   </p>
                 </div>
-                <button className="button primary" onClick={() => add("offer")}>
+                <button data-tour="add-listing" className="button primary" onClick={() => add("offer")}>
                   <Plus size={17} /> Add an offer or need
                 </button>
               </div>}
@@ -776,7 +794,7 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
                         <ChevronRight size={20} />
                       </button>
                     ))}
-                  <Discovery key={discoveryEpoch} state={state} user={user} matches={matches} query={query} initialReviewKey={initialReviewKey} onInitialReviewOpened={() => setInitialReviewKey(null)} onPropose={propose} onEditListings={() => go("My offers & needs")} />
+                  <Discovery isolated={!!tour} key={discoveryEpoch} state={state} user={user} matches={matches} query={query} initialReviewKey={initialReviewKey} onInitialReviewOpened={() => setInitialReviewKey(null)} onPropose={propose} onEditListings={() => go("My offers & needs")} />
                 </>
               )}
               {page === "My exchanges" && (
@@ -979,12 +997,13 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
             <button onClick={() => setModal("help")}>
               Learn about Skills-Ring <ArrowUpRight size={13} />
             </button>
-            {dataMode === "demo" && <button className="demo-link" onClick={() => setModal("demo")}>
+            {dataMode === "demo" && !tour && <button className="demo-link" onClick={() => setModal("demo")}>
               Try a demo scenario
             </button>}
           </footer>
         </div>
       </main>
+      {tour && <TourGuide bridge={tourBridge} initialChapter={tour} initiallyPaused={tourPaused} accountId={account.userId} onExit={onExitTour!} />}
       {selectedExchange && (
         <Modal title="Exchange details" onClose={() => setSelected(null)} wide>
           <ExchangeDetails
@@ -1124,7 +1143,7 @@ function Workspace({ account, onLogout, demo, onModeChange }: {
                 key={s.key}
                 className="scenario"
                 onClick={() => {
-                  try { for (const key of Object.keys(localStorage)) if (key.startsWith("skills-ring-discovery-v1-")) localStorage.removeItem(key); } catch { /* Demo still runs when storage is unavailable. */ }
+                  try { if (!tour) for (const key of Object.keys(localStorage)) if (key.startsWith("skills-ring-discovery-v1-")) localStorage.removeItem(key); } catch { /* Demo still runs when storage is unavailable. */ }
                   setDiscoveryEpoch((n) => n + 1);
                   setState(seed(s.key));
                   setUser("alice");
@@ -1398,9 +1417,7 @@ function Modal({
     const handle = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
       if (e.key === "Tab") {
-        const items = ref.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input, select, textarea, [tabindex="0"]',
-        );
+        const items = ref.current ? dialogFocusTargets(ref.current) : [];
         if (!items?.length) return;
         const first = items[0],
           last = items[items.length - 1];
@@ -1479,6 +1496,7 @@ function ListingForm({
   return (
     <form
       className="listing-form"
+      data-tour="listing-form"
       onSubmit={async (e) => {
         e.preventDefault();
         if (saving) return;
@@ -1515,7 +1533,7 @@ function ListingForm({
         <button
           type="button"
           className={currentKind === "need" ? "active" : ""}
-          onClick={() => setKind("need")}
+          data-tour="kind-need" onClick={() => setKind("need")}
         >
           <Compass size={17} /> What I need
         </button>
@@ -1528,7 +1546,7 @@ function ListingForm({
         <label>
           Category
           <select
-            value={category}
+            data-tour="category" value={category}
             onChange={(e) => { const next = e.target.value; setCategory(next); setSkill(choices[next][0]); }}
           >
             {Object.keys(choices).map((c) => (
@@ -1619,7 +1637,7 @@ function ListingForm({
       <small className="muted">
         Conditions must match exactly for automatic matching. Agree on exact session dates within an exchange.
       </small>
-      <button className="button primary full-width" type="submit" disabled={saving || !category || !skill}>
+      <button data-tour="publish" className="button primary full-width" type="submit" disabled={saving || !category || !skill}>
         {saving ? "Saving and refreshing matches…" : initial ? "Save changes" : `Publish ${currentKind}`}
       </button>
     </form>
@@ -1755,7 +1773,7 @@ function ExchangeDetails({
                 </div>
                 {canComplete && remaining(state, e, l) > 0 && (dataMode !== "live" || l.provider === user) && (
                   <button
-                    className="button full-width"
+                    data-tour={`complete-${l.provider}`} className="button full-width"
                     disabled={!!pending || !!state.bookings?.some((b) => b.exchange === e.id && b.leg === l.id && b.status === "accepted" && Date.parse(b.start) > Date.now())}
                     onClick={() =>
                       act({ type: "complete", exchange: e.id, leg: l.id })
@@ -1789,7 +1807,7 @@ function ExchangeDetails({
                   <Avatar user={p} />
                   <strong>{people[p].name}</strong>
                   <button
-                    className={`button ${e.confirmations.includes(p) ? "" : "primary"}`}
+                    data-tour={`confirm-${p}`} className={`button ${e.confirmations.includes(p) ? "" : "primary"}`}
                     disabled={e.confirmations.includes(p) || (dataMode === "live" && p !== user)}
                     onClick={() =>
                       act({ type: "confirm", exchange: e.id, user: dataMode === "live" ? user : p })
@@ -2217,7 +2235,7 @@ function EvaluationForm({
 }) {
   const existing = state.evaluations.find((e) => e.session === session);
   return (
-    <details>
+    <details data-tour={`feedback-${state.sessions.find(s => s.id === session)?.provider}`}>
       <summary>
         {existing
           ? "Evaluation recorded · Edit feedback"

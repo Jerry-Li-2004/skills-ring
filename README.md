@@ -87,6 +87,14 @@ The entry form requires only a display name and email. There is no password, con
 - Platform-calculated simulated HKD service reference values and refundable 20% completion bonds, accepted in the existing all-party confirmation round and recorded in a separate bond ledger. No real funds are processed.
 - Demo Studio in the top bar opens the repeatable stories. The motion toggle pauses decorative animation; system reduced-motion preferences are respected.
 
+## Guided product demo
+
+Click **Explore a demo** in the workspace header to start an isolated autoplay walkthrough. It uses the existing listing forms, matching engine, confirmations, bookings, and settlement logic. New offers and needs reveal actual new routes, followed by a three-person ring and a clearly labeled prepared partial-settlement example.
+
+Use **Pause**, **Next**, **Replay chapter**, **Restart tour**, or **Try it yourself** at any time. **Explore chapters** jumps to discovery, ring coordination, or settlement. Exiting restores the previous workspace without replacing its demo data or writing tour activity to the live API. Reloading resumes at the chapter's initial checkpoint, paused. Tour matching preferences stay in memory; only the resumable chapter marker uses session storage. No video or audio is recorded.
+
+The storyboard and optional expansion ideas live in [the demo skill](skills/demo-skills-ring/SKILL.md). Advanced withdrawal and dispute scenarios remain available in the manual Demo Studio.
+
 ## Demo walkthroughs
 
 These retained development scenarios describe the local domain simulator. New registrations atomically create a private starter workspace in Supabase, personalized with the registered name and user ID. The main workspace immediately contains two discovery matches, one partly settled example exchange, and starter offers/needs. Progress persists in `account_starter_workspaces` with optimistic concurrency. These examples appear alongside subsequently added real listings, without a separate onboarding mode. Fictional peers and history do not enter community matching or reputation calculations. Existing profiles are not backfilled. The optional Demo Studio still uses local browser storage.

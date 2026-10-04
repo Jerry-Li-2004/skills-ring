@@ -67,6 +67,15 @@
 .auth-card h1 { margin: 14px 0 8px; font-size: clamp(29px, 2.5vw, 38px); line-height: 1.12; letter-spacing: -1.3px; }
 .auth-intro { color: #777b91; line-height: 1.55; font-size: 13px; margin: 0 0 25px; }
 .auth-card form { display: grid; gap: 15px; }
+.auth-providers { display: grid; gap: 9px; }
+.auth-provider { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 46px; padding: 11px 14px; border: 1px solid #dfe2ec; border-radius: 11px; background: #fff; color: #34384d; font: inherit; font-size: 13px; font-weight: 650; text-align: left; cursor: pointer; transition: background .15s, border-color .15s; }
+.auth-provider:hover { background: #f5f6ff; border-color: #a6afe8; }
+.auth-provider:disabled { opacity: .6; cursor: wait; }
+.auth-provider > svg { width: 20px; height: 20px; flex: 0 0 auto; }
+.auth-provider > svg:last-child { width: 16px; height: 16px; margin-left: auto; color: #85899c; }
+.auth-provider-note { margin: 10px 0 0; color: #777b91; font-size: 11px; line-height: 1.5; }
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; color: #85899c; font-size: 11px; }
+.auth-divider::before, .auth-divider::after { content: ""; height: 1px; flex: 1; background: #ececf3; }
 .auth-card label { display: grid; gap: 7px; color: #4e536b; font-size: 12px; font-weight: 700; }
 .auth-card input { width: 100%; min-height: 46px; padding: 10px 13px; border: 1px solid #dfe2ec; border-radius: 11px; background: #fafafe; color: #292a37; font: inherit; font-size: 13px; }
 .auth-card input::placeholder { color: #a3a6b5; }
@@ -123,3 +132,16 @@
   .account-display-name { display: none; }
   .demo-identity-note { flex-direction: column; align-items: flex-start; }
 }
+
+/* Keep the shared hero focused on its headline and illustration at registration. */
+.auth-home .hero-problem-mark,
+.auth-home .hero-actions,
+.auth-home .hero-footnote,
+.auth-home .orbit-skill small,
+.auth-home .orbit-caption,
+.auth-home .orbit-controls,
+.auth-home .chapter-copy { display: none; }
+.auth-home .hero-copy { padding-top: 30px; padding-bottom: 30px; }
+.auth-home .orbit-experience { padding-bottom: 0; }
+.auth-card h1 { margin: 0 0 28px; }
+.auth-card .profile-import { margin-top: 22px; }

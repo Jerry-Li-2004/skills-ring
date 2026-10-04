@@ -1,0 +1,24 @@
+.tour-workspace { padding-bottom: 235px; }
+.tour-guide { position: fixed; z-index: 10000; bottom: 16px; left: max(16px, calc((100vw - 1000px) / 2)); right: max(16px, calc((100vw - 1000px) / 2)); background: #20223b; color: #fff; padding: 16px 22px; border: 1px solid #797ba4; border-radius: 18px; box-shadow: 0 12px 60px #15163040; font-size: 14px; }
+.tour-heading { display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:10px;letter-spacing:.1em;color:#c9ccff; }
+.tour-guide button { border: 1px solid #8588ad; background:#30334f; color:white; border-radius:8px;padding:7px 12px;font:inherit;cursor:pointer; }
+.tour-guide button:hover { background:#484c70; }
+.tour-guide button:focus-visible { outline:3px solid #d4fd97;outline-offset:3px; }
+.tour-guide button:disabled { opacity:.4;cursor:default; }
+.tour-copy strong { display:block;font-size:19px;margin-top:8px; }
+.tour-copy p { margin:5px 0 10px;color:#e3e4f3;line-height:1.45; }
+.tour-guide progress { display:block;width:100%;height:4px;margin:10px 0;accent-color:#b9dfa0; }
+.tour-buttons,.tour-chapters { display:flex;flex-wrap:wrap;gap:6px; }
+.tour-chapters { margin-top:10px; }
+.tour-chapters p { margin:4px 0; }
+.tour-evidence { display:block;margin-top:8px;font-size:11px;color:#c3c8de; }
+.tour-target { outline: 4px solid #7771de !important; outline-offset:5px;box-shadow:0 0 0 9px #a59cf333 !important;scroll-margin-block:120px 280px; }
+.tour-workspace .modal-overlay { bottom:240px; }
+.tour-workspace .modal { max-height:calc(100vh - 290px); }
+@media(max-width:600px) { .tour-guide { bottom:8px;left:8px;right:8px;padding:10px 12px; }.tour-copy strong{font-size:16px}.tour-copy p{font-size:12px}.tour-guide button{font-size:11px;padding:6px 8px}.tour-heading{font-size:8px}.tour-workspace .modal-overlay{bottom:260px}.tour-workspace .modal{max-height:calc(100dvh - 285px)}.tour-workspace{padding-bottom:275px}.tour-evidence{font-size:10px} }
+@media(prefers-reduced-motion:reduce){.tour-target{transition:none!important;animation:none!important}}
+
+.tour-pointer { position:fixed;z-index:9999;pointer-events:none;color:#6259c7;font-size:28px;transform:rotate(-125deg);filter:drop-shadow(0 2px 2px #fff); }
+.tour-pointer { animation:tour-click .45s forwards; }
+@keyframes tour-click { 0%,50% { opacity:1; } 100% { opacity:0; } }
+@media(prefers-reduced-motion:reduce){.tour-pointer{display:none}}
