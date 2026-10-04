@@ -1,91 +1,338 @@
 # Skills-Ring
 
-An Apple-inspired community for individual skill sharing and non-monetary service exchange. The app combines a React/Vite frontend, authenticated Node API, Python recommender, and Supabase storage.
+> **A coordination and settlement network for non-monetary value.**
+>
+> *We do not put a price on what people have. We make it exchangeable.*
 
-## Production deployment
+**Project Version 2** | React + Vite | Node.js API | Python recommender | Supabase
 
-Live site: https://skills-ring.vercel.app — Vercel project `skills-ring` in `jerry-li-0704`, backed by the `skillsring` Supabase project `mwyictnozocjicjeacqk` in Singapore.
+Skills-Ring is an Apple-inspired community application for exchanging skills and time without requiring money, tokens, or a shared institution. A member describes what they can **give** and what they want to **learn**, then discovers a direct exchange or a multi-person route through the community.
 
-The Vite frontend is static, `/api/*` runs the Node 24 server function, and `/api/recommend` runs a separate Python 3.12 function. Production does not use SQLite or spawn Python from Node. Anyone can register with a display name and email and enter immediately, without a password or email verification. The server saves a new profile and issues a signed registration receipt, remembered in that browser. API requests validate this receipt and the active profile; privileged database access stays on the server. Existing Supabase access tokens remain supported.
+Version 2 expands the original prototype into a persistent product foundation with live Supabase storage, a server-side transaction layer, multi-party exchange workflows, reliability and dispute controls, account-specific starter workspaces, calendar export, moderator tooling, and a production recommendation pipeline.
+
+## Table of contents
+
+- [What changed in Version 2](#what-changed-in-version-2)
+- [How Skills-Ring works](#how-skills-ring-works)
+- [Core features](#core-features)
+- [Try the live product](#try-the-live-product)
+- [Run locally](#run-locally)
+- [User guide](#user-guide)
+- [Recommendation engine](#recommendation-engine)
+- [Architecture](#architecture)
+- [Environment variables](#environment-variables)
+- [Testing and verification](#testing-and-verification)
+- [Deployment](#deployment)
+- [Project structure](#project-structure)
+- [Product boundaries](#product-boundaries)
+
+## What changed in Version 2
+
+Version 1 established the core idea: match people who can provide and receive different skills. Version 2 turns that idea into a complete exchange workflow.
+
+| Area | Version 1 direction | Version 2 implementation |
+| --- | --- | --- |
+| Data | Local or demo-oriented state | Supabase-backed persistent data with revision checks |
+| Identity | Prototype profile flow | Server-issued registration receipts and authenticated profile access |
+| Matching | Direct discovery | Direct matches plus complete three- and four-person routes |
+| Exchange | Basic proposal concept | Confirmations, commitments, sessions, settlement, withdrawals, and recovery |
+| Trust | Demonstration feedback | Reliability history, disputes, moderation, and completion-bond ledger |
+| Collaboration | Local interactions | Private live exchanges, messages, bookings, notifications, and calendar export |
+| Onboarding | Shared demo examples | Private starter workspace created for each new account |
+| Operations | Development-only controls | Production API, recommendation worker, moderator allowlist, and smoke tests |
+
+## How Skills-Ring works
+
+Every member contributes two sides of a profile:
+
+- **Give:** a skill or service they can provide.
+- **Learn:** a skill or service they want to receive.
+
+The platform compares skill, duration, capacity, availability, delivery mode, location, and level. It first checks whether an exchange is feasible, then ranks the result. When a direct match does not exist, it can discover a complete ring:
+
+```text
+Alice gives Python and needs Photography
+Bob gives Photography and needs Tennis
+Charlie gives Tennis and needs Python
+
+Alice → Bob → Charlie → Alice
+```
+
+The exchange follows a visible lifecycle:
+
+```text
+Discover → Match → Review → Confirm → Schedule → Deliver → Settle → Evaluate
+```
+
+The system records concrete service commitments rather than pretending that unlike skills have an objective universal price. A platform-calculated HKD reference value may be shown for transparency, but the product does not process real payments.
+
+## Core features
+
+### Discovery and matching
+
+- Standardized 42-entry skill library with category-specific **Other** suggestions.
+- Separate offer and need forms with duration, capacity, level, mode, location, conditions, and availability.
+- Direct reciprocal matches and complete three-/four-person cycles.
+- Feasibility-first recommendation ranking with route explanations.
+- Search, filters, sorting, pass, undo, save, and keyboard/touch-friendly discovery.
+- Future recommendations that account for existing commitments and reliability.
+
+### Exchange coordination
+
+- Full proposal review with all participants and service legs visible.
+- Independent confirmations, declines, cancellations, expiries, and revisions.
+- Exchange conversations, in-app notifications, exact session-time proposals, and acceptance.
+- Calendar export for accepted future bookings.
+- Cancellation, rescheduling, a 15-minute no-show reporting window, and session completion.
+
+### Fairness and recovery
+
+- Derived commitments and settlement state instead of editable balances.
+- Full and partial delivery with exact remaining obligations.
+- Receive-first eligibility limits when a participant has received substantially more than they have delivered.
+- Withdrawal handling, compatible replacement search, renewed consent, and no-replacement defaults.
+- Amendment history for future session counts; all affected participants must consent.
+- Dispute holds with simulated full release, 50% partial release, or default outcomes.
+- Binary evaluations and reliability history derived from recorded feedback.
+- Refundable 20% completion bonds recorded in a simulation ledger; no real funds are held.
+
+### Community and operations
+
+- Public skill profiles and compatible-match review.
+- Account-specific starter workspaces with fictional examples that never enter real community matching.
+- Moderator queue for disputes and starter-workspace review.
+- Atomic server mutations with optimistic revision checks.
+- Private filtering of exchange data so participants see only their own exchanges.
+- Responsive Apple-inspired interface with reduced-motion support.
+
+## Try the live product
+
+Live deployment: **[skills-ring.vercel.app](https://skills-ring.vercel.app)**
+
+Registration currently uses a display name and email address. There is no password, email confirmation, or password-reset flow in this prototype. A registration receipt is stored for the current browser so that the profile can be reused on return visits.
+
+The live product is a working application foundation and demonstration environment. The seeded fictional community is for onboarding and examples; fictional users cannot independently consent to real exchanges.
 
 ## Run locally
 
-Use Node 24 and Python 3.12+. Copy `.env.example` to `.env.local` and fill the public project key and server secret. Never put the server secret in a `VITE_*` variable.
+### Requirements
 
-```sh
+- Node.js **24.x**
+- Python **3.12+**
+- A Supabase project for local development
+
+### 1. Install dependencies
+
+```bash
 npm ci
+```
+
+For recommender tests or the local worker, install the small dependency set from `raw-database/requirements.txt`.
+
+### 2. Configure environment variables
+
+Copy the example file and fill in the values:
+
+```bash
+# Windows PowerShell
+Copy-Item .env.example .env.local
+
+# macOS/Linux
+cp .env.example .env.local
+```
+
+See [Environment variables](#environment-variables). Never expose a server secret through a `VITE_*` variable.
+
+### 3. Start the API
+
+In the first terminal:
+
+```bash
 npm run dev:api
-# In another terminal:
+```
+
+The API runs on port `3001` by default. It builds the server bundle and loads `.env.production`, `.env.local`, and the optional `.env.moderators.local`.
+
+### 4. Start the Vite frontend
+
+In a second terminal:
+
+```bash
 npm run dev
 ```
 
-Vite proxies `/api` to port 3001. To serve the compiled app and API together:
+Open the local Vite URL shown in the terminal. Vite proxies `/api` requests to the local API.
 
-```sh
+### Production-style local run
+
+```bash
 npm run build
 npm start
 ```
 
-Both local modes use the same registration flow and database as the deployed app. The local API runs the Python recommender as a subprocess; Vercel calls the protected Python function over HTTPS. For an isolated development dataset, configure a separate Supabase project.
+## User guide
 
-## Deploy updates
+### Start a workspace
 
-Apply committed migrations to the intended Supabase project before deploying. The server depends on `commit_app_mutation`, `app_revision`, the recommendation lease functions, and `register_with_starter` / `account_starter_workspaces`. Keep browser roles denied on the raw tables; the authenticated Node gateway performs ownership checks and filters private exchange records.
+1. Register with a display name and email.
+2. Review the private starter workspace created for the account.
+3. Open **My offers & needs** to inspect, edit, duplicate, pause, archive, or delete listings.
+4. Add both a skill you can provide and a skill you want to receive.
 
-Configure Vercel production and preview variables:
+### Discover a match
 
-- `SUPABASE_URL`: server database URL.
-- `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_PUBLISHABLE_KEY`: optional compatibility for existing Supabase login sessions.
-- `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`): server-only secret.
-- `CRON_SECRET`: randomly generated secret for the Python worker and cron.
-- `VERCEL_AUTOMATION_BYPASS_SECRET`: needed when preview protection blocks internal calls to that preview's Python worker.
+1. Open **Discover matches**.
+2. Read the route explanation and the **Give / Learn / Meet** steps.
+3. Use filters or sorting if needed.
+4. Pass, save, or open **Review match**.
+5. Check every participant, service leg, duration, availability, and imbalance warning.
+6. Suggest changes if the terms are not suitable, then submit the proposal.
 
-```sh
+### Confirm and schedule
+
+1. Each participant confirms independently.
+2. Open **Conversation & schedule**.
+3. Send a message and propose an exact date and time.
+4. Accept the booking from the relevant participant.
+5. Use **Export calendar** to download an `.ics` file.
+6. After the scheduled start time, the provider can record delivery.
+
+### Complete, evaluate, or dispute
+
+After delivery, open **Sessions & trust** to record feedback, report a no-show, raise a dispute, or inspect reliability and settlement information. A dispute pauses settlement until a moderator records a reasoned resolution.
+
+### Explore the built-in scenarios
+
+Open **Demo Studio** or choose **Try a demo scenario**. The scenarios use repeatable browser-local demonstration state:
+
+- **Give first, settle in parts:** see an imbalance, partial settlement, remaining obligation, and restored eligibility.
+- **Keep the ring moving:** withdraw from a multi-party exchange, search for a replacement, renew consent, and complete recovery.
+- **No replacement:** inspect the uncovered contribution and defaulted responsibility after a simulated deadline.
+- **Disputes and amendments:** pause settlement, record a dispute decision, or change future session counts with all-party consent.
+
+The participant selector lets you inspect a fictional ledger from each perspective. These demo confirmations are explicitly simulated and are not authenticated approvals.
+
+## Recommendation engine
+
+The recommender has two execution paths:
+
+- **Local development:** the Node server runs the Python recommender as a subprocess.
+- **Vercel production:** `/api/recommend` runs as a protected Python function and writes refreshed recommendations to Supabase.
+
+The engine reads live offers, needs, availability, exchanges, commitments, reliability, and recommendation history. It produces feasible direct matches and complete cycles, rejects self-matches, and ranks candidates for each participating user.
+
+For a standalone CSV regression run:
+
+```bash
+cd raw-database
+python main.py --csv-dir HacKU/database_demo2_csv --output-dir result_outputs
+```
+
+The generated outputs include `matches.csv` and `recommendation_rankings.csv`.
+
+## Architecture
+
+```text
+┌──────────────────────┐
+│ React + Vite client  │
+│ Discovery / UI / UX  │
+└──────────┬───────────┘
+           │ authenticated /api requests
+┌──────────▼───────────┐
+│ Node 24 server       │
+│ auth / validation    │
+│ atomic mutations     │
+│ private data filter  │
+└──────────┬───────────┘
+           │ REST / RPC
+┌──────────▼───────────┐       ┌──────────────────────┐
+│ Supabase             │◄──────│ Python recommender  │
+│ storage + functions  │       │ local / Vercel      │
+└──────────────────────┘       └──────────────────────┘
+```
+
+The browser does not write privileged tables directly. The Node gateway performs identity, participant, ownership, revision, and private-response checks before committing changes.
+
+## Environment variables
+
+The repository includes `.env.example`.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `VITE_SUPABASE_URL` | Yes | Browser-compatible Supabase URL |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Yes | Browser-compatible publishable key |
+| `SUPABASE_URL` | Server | Server database URL |
+| `SUPABASE_SECRET_KEY` | Server | Server-only secret key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Optional | Legacy alias accepted for the server secret |
+| `CRON_SECRET` | Production worker | Authorizes recommendation refresh jobs |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | Optional | Allows protected preview-to-worker calls |
+| `MODERATOR_USER_IDS` | Optional | Comma-separated moderator profile IDs |
+| `PORT` | Optional | Local API port; defaults to `3001` |
+| `PYTHON_BIN` | Optional | Python executable for the local server |
+
+Keep server secrets in `.env.local`, `.env.production`, or a server-only secret store. Do not commit them and never prefix them with `VITE_`.
+
+## Testing and verification
+
+```bash
 npm test
 npm run test:auth
 npm run test:production
 npm run test:python
 npm run build
+```
+
+Additional scripts are available in `scripts/`:
+
+```bash
+node scripts/self-matching-smoke.mjs
+node scripts/live-smoke.mjs https://skills-ring.vercel.app
+```
+
+The live smoke test requires server credentials and writes only temporary test records to the configured project. Use it only against an environment intended for testing.
+
+## Deployment
+
+The Vercel deployment uses a static Vite frontend, a Node 24 `/api/*` function, a Python 3.12 `/api/recommend` function, and Supabase storage/RPCs.
+
+Before deploying:
+
+1. Apply committed migrations to the intended Supabase project.
+2. Configure Vercel production and preview variables.
+3. Confirm the server secret and `CRON_SECRET` are present server-side.
+4. Run the test and build commands above.
+5. Deploy:
+
+```bash
 vercel deploy --prod
 ```
 
-Vercel runs one daily recommendation refresh at 19:00 UTC (03:00 Hong Kong time), compatible with the current Hobby plan. Mutations also await an immediate refresh. A failed refresh does not discard an already committed change; the UI reports that recommendations are pending. Function execution is bounded to 300 seconds.
+Hosted recommendations refresh once per day, and mutations also request an immediate refresh. A failed refresh preserves the committed exchange change and reports that recommendations are pending.
 
-Registration requires no Supabase Auth dashboard changes or email delivery setup. Names and email addresses are self-reported. Each registration creates a distinct profile. A server-only HMAC of normalized email links profiles for matching exclusions only; it never grants access to another profile. Confirmed duplicate profiles can also share a matching identity. Display names are never used to infer identity. Legacy signed receipts bind their matching identity on the next authenticated request. Returning visits in the same browser reuse the saved receipt; leaving a profile or clearing browser data requires a new registration and does not recover previous exchanges. Keep the server secret stable because rotating it invalidates registration receipts.
+## Project structure
 
-## Data integrity and authorization
-
-The server derives exchange state from stored records and a requested action. It rejects another participant's identity, checks provider-only completion, and reserves moderator operations. A database transaction saves related rows atomically and rejects writes based on an outdated global revision. A separate database lease serializes hosted recommendation jobs. Private exchange details, messages, bookings, and notifications are returned only to their participants. Display names never select an account identity. Live failures show an error instead of silently opening a fictional workspace.
-
-## Verification and remaining product boundaries
-
-`server/production.test.mjs` covers verified identity, private snapshot filtering, actor impersonation, and atomic operation batching. `scripts/live-smoke.mjs` creates temporary confirmed test accounts, verifies listing → recommendation → proposal → independent confirmations → settlement, and removes its own records. It requires a server secret and intentionally writes only test records to the configured project:
-
-```sh
-node --env-file=.env.production --env-file=.env.local scripts/live-smoke.mjs https://skills-ring.vercel.app
+```text
+skills-ring/
+├── src/                 React UI, domain model, styles, and client sync
+├── server/              Node API, auth, persistence, moderation, calendar
+├── api/                 Vercel Python recommendation entry point
+├── raw-database/        Python matching engine and CSV fixtures
+├── supabase/migrations/ Database schema, RPCs, indexes, and security rules
+├── scripts/             Build, seed, smoke-test, and moderator utilities
+├── skills/              Product and implementation skills
+├── deliverables/        Product documentation and rationale
+├── public/              Public images and static assets
+└── README.md            Project documentation
 ```
 
-The entry form requires only a display name and email. There is no password, confirmation email, or password-reset step. Custom skill moderation, administrator dispute resolutions, and simulated deadline defaults require a trusted moderation workflow; the production API rejects those actions. Notifications are in-app records; no push/SMS/email exchange notifications are sent. The synthetic seeded community remains demonstration data, and those users cannot independently consent. This is a deployed application foundation, not a claim that community moderation, operational support, or an independent security audit is complete.
+Key implementation files:
 
-## What works
-
-- Separate offer and need forms with a standardized 42-entry skill library (including category-specific Other options), duration, capacity, mode, location, level, conditions, and coarse availability.
-- Actual reciprocal and three-/four-person cycle discovery; feasibility precedes transparent recommendation priority.
-- Explicit per-participant confirmations and observable-quantity imbalance warnings.
-- Atomic local state transitions for sessions, immutable contributions, derived commitments and settlement.
-- One unfulfilled receive-first commitment; full or partial delivery; exact remainder and restored eligibility.
-- Withdrawal, compatible replacement search, renewed consent, and no-replacement default. Completed value and original responsibility are retained.
-- Future session-count amendments with an audit trail and all-party consent.
-- Dispute holds and simulated full release, 50% partial release, or default; original claims remain preserved.
-- Binary behavioural evaluations and reliability derived from recorded feedback.
-- Glass-style navigation, an interactive Give / Learn / Connect hero, animated progress and statistics, and a settlement celebration.
-- Responsive navigation, keyboard-accessible dialogs and hero tabs, search, device-local persistence, and repeatable scenarios.
-- Guided discovery with side-by-side profile cards, clear teach/learn/meet steps, pass, undo, saved matches, pointer/touch/keyboard actions, filters, sorting, route explanations, and a separate full-term proposal review.
-- Proposal expiry, declined and cancelled proposals, revised terms with renewed consent, and local per-participant updates.
-- Listing edit, duplicate, pause, archive, fulfilment and guarded deletion; multi-slot and date-range availability; a simulated review queue for Other skill suggestions.
-- Exchange conversations, exact session-time proposals and acceptance, calendar export, local reminders, cancellation/rescheduling, and a 15-minute no-show reporting window.
-- Platform-calculated simulated HKD service reference values and refundable 20% completion bonds, accepted in the existing all-party confirmation round and recorded in a separate bond ledger. No real funds are processed.
-- Demo Studio in the top bar opens the repeatable stories. The motion toggle pauses decorative animation; system reduced-motion preferences are respected.
+- `src/domain.ts` — matching, transitions, commitments, settlement, reliability, and demo scenarios.
+- `src/main.tsx` — primary workspace and workflow UI.
+- `server/runtime.mjs` — production runtime configuration and server composition.
+- `server/production-store.mjs` — Supabase-backed live state and authorization boundaries.
+- `raw-database/engine/matching.py` — recommendation and cycle generation.
+- `supabase/migrations/` — source of truth for the live database schema.
 
 ## Guided product demo
 
@@ -95,56 +342,23 @@ Use **Pause**, **Next**, **Replay chapter**, **Restart tour**, or **Try it yours
 
 The storyboard and optional expansion ideas live in [the demo skill](skills/demo-skills-ring/SKILL.md). Advanced withdrawal and dispute scenarios remain available in the manual Demo Studio.
 
-## Demo walkthroughs
+## Product boundaries
 
-These retained development scenarios describe the local domain simulator. New registrations atomically create a private starter workspace in Supabase, personalized with the registered name and user ID. The main workspace immediately contains two discovery matches, one partly settled example exchange, and starter offers/needs. Progress persists in `account_starter_workspaces` with optimistic concurrency. These examples appear alongside subsequently added real listings, without a separate onboarding mode. Fictional peers and history do not enter community matching or reputation calculations. Existing profiles are not backfilled. The optional Demo Studio still uses local browser storage.
+Skills-Ring is a coordination and settlement prototype, not a payment platform or a guarantee of service quality.
 
-Use **Workspace settings** or **Try a demo scenario**. Loading a scenario replaces local demo data. Use the header participant selector to view any fictional participant’s ledger. Named confirmation buttons explicitly simulate the respective person’s agreement; these are not authenticated approvals.
+- No real money, escrow, or payment custody is implemented.
+- Completion bonds are simulation-only ledger records.
+- Notifications are in-app; no SMS, push, or email exchange notifications are sent.
+- Registration is self-reported and has no password or email verification.
+- Rotating the server secret invalidates existing registration receipts.
+- Reliability signals and imbalance warnings support decisions but do not guarantee fairness.
+- The platform can preserve claims and record defaults, but cannot recreate an irreversible service.
+- Moderation policy, privacy/retention rules, support procedures, SMTP/Auth URL setup, and an independent security review remain required before broad public launch.
 
-### P1 core experience
+## Version 2 status
 
-Open **Discover matches** to view one route at a time. The profile cards and three numbered steps explain what you teach, what you learn, and when the exchange works. Pass or save with the visible buttons, or use left/right pointer and touch swipes and keyboard arrows. **Review match** shows all participants and service terms; you can suggest changes before a separate confirmation step sends a proposal. Proposal confirmations, declines, revisions, and notifications are simulated for each fictional participant. Open an exchange’s **Conversation & schedule** tab to send a local message, propose an exact time, switch fictional participants to accept it, and export an accepted time to a calendar. Accepted future bookings can be recorded as completed only after their start time. **My offers & needs** supports editing and availability ranges; Other skill suggestions wait in the Demo Studio’s simulated review queue.
+Version 2 is a deployed application foundation with a complete demonstration workflow and a tested authenticated transaction layer. The next stage is operational hardening: community moderation policy, privacy and retention rules, support processes, production observability, and independent security review.
 
-### 1. Imbalance and partial settlement
+## License
 
-Choose **Give first, settle in parts**, then review the direct match. Alice provides two 60-minute Python sessions; Bob provides two 30-minute tennis sessions. Confirm as both people. Record both Python sessions, then one tennis session. The exchange is partially settled and Bob owes one 30-minute tennis session; his receive-first eligibility is restricted. Record the last session to settle and restore eligibility.
-
-### 2. Multi-party withdrawal after performance
-
-Choose **Keep the ring moving** and review the ring with Charlie (the first result). The route is Alice → Charlie (Python), Charlie → Bob (tennis), Bob → Alice (photography). Confirm as all three and record Alice’s session. In **Changes & recovery**, supply a reason and withdraw as Charlie. Find David’s compatible offer and reconfirm as all four affected people. Return to Overview and record David’s replacement service, then Bob’s photography. The original debtor remains Charlie until the accepted recovery service is performed; David’s actual contribution is separately recorded.
-
-Replay the case and choose **Simulate deadline · No replacement** instead to inspect the uncovered contribution and defaulted responsibility. Before-performance withdrawal can also substitute the incoming service after everyone accepts the revised route.
-
-### Disputes, changes, and feedback
-
-After recording a session, open **Sessions & trust** to leave binary feedback or raise a dispute with a reason. A dispute holds further settlement. The three resolution buttons simulate an administrator’s recorded decision. Partial release recognizes half the claimed duration and leaves the remainder owed without changing the original contribution.
-
-In **Changes & recovery**, propose a new total session count within offer capacity. Current and proposed terms are displayed, performance is paused, and every participant must accept before terms change. Prior completed sessions and amendment history remain intact.
-
-## Architecture and boundaries
-
-- `src/domain.ts`: pure matching, transitions, ledger derivation, reliability, seed scenarios, and recommendation priorities.
-- `src/domain.test.ts`: domain regression tests.
-- `src/main.tsx`: workspace and workflow UI.
-- `src/styles.css`: base layout and responsive behaviour.
-- `src/theme.css`: Apple-inspired visual treatment, transitions, and responsive motion.
-- `src/experience.tsx`: interactive hero, motion preference, animated values, exchange journey, and settlement celebration.
-- `scripts/browser-smoke.js`: browser-side smoke test exercising visible controls; run with an already-open local app using `agent-browser eval --stdin < scripts/browser-smoke.js`. This deliberately resets the local demo workspace.
-- Storage key: `skills-ring-demo-v1-<userId>` (mode: `skills-ring-mode-v1-<userId>`). Local scenario data uses this key. Live exchange state is stored transactionally in Supabase; the browser does not persist live snapshots under this key.
-- Conditions use conservative exact matching. The form supports multiple coarse availability slots and optional date ranges. Live session bookings, messages, and in-app notifications are stored in each exchange aggregate and refreshed across participant devices; no external notifications are delivered. Completion bonds are a simulation-only risk-control demonstration; there is no payment custody, escrow provider, or email integration.
-- Contributions and session records preserve original claims. Dispute resolutions record separate recognized-duration adjustments. Remaining sessions and commitment/settlement state are derived, not editable balances. For the demo, each accepted service leg is treated as a concrete obligation, without tokens or prices.
-- The imbalance threshold is configurable through the domain helper (default 25% or different session counts). Participants’ consent is not a guarantee of substantive fairness.
-
-The receive-first limit protects contributors but also constrains honest newcomers who need several services before reciprocating. Skills-Ring breaks when value has already been delivered, the responsible participant defaults, and no acceptable replacement or alternative route exists. It can preserve the claim, restrict the defaulter, and record the loss; it cannot recreate an irreversible service or guarantee repayment. Small networks, subjective service quality, collusion, pressure to agree, and rejected replacements remain real limits.
-
-Before a broad community launch, finish SMTP and Auth URL setup, establish operational dispute procedures, and define privacy/retention and operational support policies. The authenticated transaction layer is implemented and tested; an independent security review remains advisable.
-
-### Moderator workspace
-
-Set server-only `MODERATOR_USER_IDS` to a comma-separated list of exact existing profile IDs. Local `npm start` and `npm run dev:api` also load the ignored `.env.moderators.local` file. Hosted deployments must configure this variable separately. Removing an ID and restarting the server revokes moderator access; browser claims, display names, and emails never grant it.
-
-To provision a dedicated profile, run `node --env-file-if-exists=.env.production --env-file-if-exists=.env.local scripts/create-moderator.mjs`. This creates a profile once and writes an owner-readable `.local/moderator-profile.json` receipt, excluded from Git. Put the returned ID in the server allowlist. Use **Open a saved profile** on the registration page or account menu to select the receipt. Keep the file private: it grants access to that profile. Opening a receipt switches the browser profile.
-
-Moderators see **Moderation** in their live workspace. Open/Resolved queues contain disputed sessions, agreed terms, conversations, and activity. Full release accepts the recorded duration; partial release accepts half and leaves the remainder owed; default releases nothing and defaults the exchange. Every decision requires a reason, records the authenticated reviewer and time, persists atomically with a revision check, and notifies participants. A moderator cannot resolve an exchange in which they participate. The same queue handles account starter exchanges with revision-checked saves. Unrelated exchanges are excluded from the moderation response.
-
-Community now supports name/skill/location search, twelve-member pages, public skill profiles, and compatible-match review. Demo directory enumeration is limited to fictional members. Workspace mode is restored per account. **Export calendar** prepares a **Download calendar file** link, valid for five minutes. The HTTP attachment uses an encrypted, authenticated, stateless ticket so private event details are not visible in the URL and downloads work across server instances. Files have stable event IDs, UTC timestamps, escaped text, and UTF-8 line folding. Proposal outcomes distinguish Declined, Cancelled, and Expired; existing stored outcomes are interpreted from their reason while actual withdrawals keep their recovery behavior.
+No open-source license has been declared yet. Contact the project owner before redistributing or using the code commercially.
