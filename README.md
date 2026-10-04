@@ -2,8 +2,6 @@
   <img src="public/images/skills-ring-logo-transparent.png" alt="Skills-Ring logo" width="260" />
 </div>
 
-# <div align="center">Skills-Ring</div>
-
 <div align="center">
 
 ### A coordination and settlement network for non-monetary value
