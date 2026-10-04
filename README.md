@@ -1,10 +1,25 @@
-# Skills-Ring
+# <div align="center">Skills-Ring</div>
 
-> **A coordination and settlement network for non-monetary value.**
->
-> *We do not put a price on what people have. We make it exchangeable.*
+<div align="center">
 
-**Project Version 2** | React + Vite | Node.js API | Python recommender | Supabase
+### A coordination and settlement network for non-monetary value
+
+*We do not put a price on what people have. We make it exchangeable.*
+
+<br />
+
+![Project Version](https://img.shields.io/badge/Project-Version%202-111827?style=for-the-badge&logo=github&logoColor=white)
+![Status](https://img.shields.io/badge/Status-Production%20Foundation-16a34a?style=for-the-badge&logo=vercel&logoColor=white)
+
+<br />
+
+![React](https://img.shields.io/badge/React-19-149eca?style=flat-square&logo=react&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-6-646cff?style=flat-square&logo=vite&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-24-5fa04e?style=flat-square&logo=node.js&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12+-3776ab?style=flat-square&logo=python&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-Database-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
+
+</div>
 
 Skills-Ring is an Apple-inspired community application for exchanging skills and time without requiring money, tokens, or a shared institution. A member describes what they can **give** and what they want to **learn**, then discovers a direct exchange or a multi-person route through the community.
 
